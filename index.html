@@ -862,27 +862,44 @@ input{background:none;border:none;outline:none}
   opacity:0.82;
 }
 .sc-cell.score.locked{color:var(--text)}
+.sc-cell.score.locked > span{
+  font-weight:600;
+}
 .sc-cell.score.empty{color:var(--text-4)}
 .sc-cell.score.preview{
   cursor:pointer;
-  color:color-mix(in srgb, var(--pc) 80%, var(--text));
-  font-weight:600;
 }
 .sc-cell.score > span{
   display:inline-flex;align-items:center;justify-content:center;
   min-width:28px;height:22px;padding:0 8px;border-radius:6px;
-  transition:background 0.16s var(--ease-out), color 0.16s var(--ease-out);
+  transition:background 0.16s var(--ease-out), color 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
   box-sizing:border-box;
   letter-spacing:-0.01em;
   font-size:13px;font-weight:500;
 }
+/* Preview cells: actionable but visibly tentative. Soft player-tinted fill,
+ * dashed pill outline, italic so they read as "click to commit" — never
+ * confused with a recorded score. No single preview is elevated over the
+ * others; picking the play is the player's call, not the engine's. */
 .sc-cell.score.preview .val{
-  color:color-mix(in srgb,var(--pc) 70%,var(--text));
+  color:color-mix(in srgb,var(--pc) 35%,var(--text));
   font-weight:500;
+  font-style:italic;
+  border:1px dashed color-mix(in srgb,var(--pc) 60%,var(--border-strong));
+  background:color-mix(in srgb,var(--pc) 10%,transparent);
+}
+.sc-cell.score.preview:hover .val{
+  background:color-mix(in srgb,var(--pc) 22%,transparent);
+  border-color:color-mix(in srgb,var(--pc) 80%,transparent);
+  border-style:solid;
+  color:var(--text);
+  font-style:normal;
+  font-weight:600;
 }
 .sc-cell.score.preview.joker-allowed .val{
   color:var(--gold-2);
-  font-weight:600;
+  border-color:color-mix(in srgb,var(--gold) 70%,transparent);
+  background:color-mix(in srgb,var(--gold) 12%,transparent);
 }
 .sc-cell.score.joker-blocked > span{opacity:0.25}
 .sc-cell.score.hm-source{cursor:pointer}
@@ -908,17 +925,12 @@ input{background:none;border:none;outline:none}
   border-color:color-mix(in srgb,var(--gold) 60%,transparent);
   color:var(--gold-2);font-weight:600;
 }
-.sc-cell.score.preview:hover .val{
-  background:color-mix(in srgb, var(--pc) 16%, transparent);
-  color:var(--text);
-}
 .sc-cell.score.preview.zero .val{
   color:var(--text-4);
   font-weight:400;
-}
-.sc-cell.score.preview.suggested .val{
-  background:color-mix(in srgb, var(--pc) 18%, transparent);
-  color:var(--text);font-weight:600;
+  font-style:italic;
+  border-style:dashed;
+  border-color:var(--border);
 }
 .sc-cell.score.commit-flash{animation:commitFlash 0.55s var(--ease-out)}
 @keyframes commitFlash{
@@ -971,22 +983,32 @@ input{background:none;border:none;outline:none}
   color:var(--text);
 }
 .sc-cell.grand .grand-val{
-  display:inline-flex;align-items:center;gap:6px;
+  display:inline-flex;align-items:center;gap:7px;
   padding:0;
   font-variant-numeric:tabular-nums;font-weight:600;
 }
 .sc-cell.grand .grand-val .num{font-size:16px;letter-spacing:-0.02em;color:var(--text)}
 .sc-cell.grand .grand-val .medal{
-  display:none;width:6px;height:6px;border-radius:50%;
-  background:var(--medal-color);
-  box-shadow:0 0 6px color-mix(in srgb,var(--medal-color) 65%,transparent);
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;border-radius:50%;
+  font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:0;line-height:1;
+  background:color-mix(in srgb,var(--medal-color) 18%,transparent);
+  border:1px solid color-mix(in srgb,var(--medal-color) 65%,transparent);
+  color:var(--medal-color);
 }
 .sc-cell.grand.rank-gold{
+  --medal-color:var(--gold-2);
   background:color-mix(in srgb, var(--gold) 7%, transparent) !important;
+}
+.sc-cell.grand.rank-silver{
+  --medal-color:#c0c4cc;
+}
+.sc-cell.grand.rank-bronze{
+  --medal-color:#b87333;
 }
 .sc-cell.grand.rank-last{opacity:0.65}
 .sc-cell.grand .last-mark{display:none}
-.sc-cell.grand .grand-val .medal{display:none !important}
 .sc-cell.grand.rank-gold .grand-val .num{color:var(--gold-2)}
 
 .sc-cell.bonus-progress{
@@ -1362,6 +1384,19 @@ body[data-theme="ember"] .pip{
   font-size:12.5px;font-weight:500;color:var(--text-2);font-variant-numeric:tabular-nums;
   letter-spacing:-0.005em;flex-shrink:0;
 }
+/* Collapsed: show a neutral label only; hide tactical phrase and odds so the
+ * panel never spoils the recommendation until the user opts in. */
+.ri-collapsed-label{
+  flex:1;min-width:0;
+  font-size:13px;font-weight:500;color:var(--text-2);letter-spacing:-0.005em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.roll-insights:not(.open) .ri-phrase,
+.roll-insights:not(.open) .ri-odds,
+.roll-insights:not(.open) .ri-dot,
+.roll-insights:not(.open) .ri-bar-loading,
+.roll-insights:not(.open) .ri-bar-empty{display:none}
+.roll-insights.open .ri-collapsed-label{display:none}
 .ri-chev{
   width:13px;height:13px;color:var(--text-4);flex-shrink:0;
   transition:transform 0.22s var(--ease);
@@ -1601,6 +1636,22 @@ body[data-theme="ember"] .pip{
   transition:border-color 0.2s ease;
 }
 .setup-name:focus{border-bottom-color:var(--pc)}
+.setup-row.has-error .setup-name{
+  border-bottom-color:color-mix(in srgb,var(--red) 65%,var(--border-strong));
+}
+.setup-row.has-error{
+  border-color:color-mix(in srgb,var(--red) 35%,var(--border));
+  background:color-mix(in srgb,var(--red) 5%,rgba(255,255,255,0.02));
+}
+.setup-name-hint{
+  display:none;
+  position:absolute;left:42px;bottom:-15px;
+  font-size:11px;color:var(--red);font-weight:500;
+  letter-spacing:-0.005em;
+  pointer-events:none;
+}
+.setup-row.has-error .setup-name-hint{display:block}
+.setup-list:has(.setup-row.has-error){padding-bottom:6px}
 .setup-remove{
   width:24px;height:24px;display:grid;place-items:center;
   background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);
@@ -2259,7 +2310,7 @@ body[data-theme="ember"] .pip{
   border-color:var(--border-strong);
   color:var(--text);
 }
-.p10-clear-toggle:disabled{opacity:0.4;cursor:not-allowed}
+.p10-clear-toggle:disabled,.p10-clear-toggle.is-locked{opacity:0.4;cursor:not-allowed}
 .p10-clear-toggle .ck svg{
   width:14px;height:14px;color:var(--text-3);
   stroke-width:2;
@@ -2305,6 +2356,17 @@ body[data-theme="ember"] .pip{
 .p10-score-input .lbl{
   font-size:12px;color:var(--text-4);font-weight:400;letter-spacing:-0.005em;
   flex-shrink:0;
+}
+/* Red pulse on invalid Commit click — surfaces which rows are at fault.
+ * Two ripples + a longer hold so the user actually has time to look. */
+.p10-row-entry.pulse-invalid .p10-score-input,
+.p10-row-entry.pulse-invalid .p10-clear-toggle{
+  animation:p10RingPulse 1.4s var(--ease-out) 2;
+}
+@keyframes p10RingPulse{
+  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--red) 55%,transparent)}
+  60%{box-shadow:0 0 0 9px color-mix(in srgb,var(--red) 0%,transparent)}
+  100%{box-shadow:0 0 0 9px color-mix(in srgb,var(--red) 0%,transparent)}
 }
 .p10-score-field{
   width:42px;
@@ -3011,11 +3073,17 @@ body[data-theme="ember"] .pip{
 }
 .p10-commit:not(:disabled):hover{background:#fff}
 .p10-commit:not(:disabled):active{transform:scale(0.99)}
-.p10-commit:disabled{
+.p10-commit:disabled,.p10-commit.is-locked{
   background:var(--surface-3);color:var(--text-4);
   cursor:not-allowed;
 }
 .p10-commit svg{width:14px;height:14px;stroke-width:2}
+.p10-commit-hint{
+  font-size:11.5px;font-weight:500;color:var(--text-3);
+  letter-spacing:-0.005em;
+  text-align:center;
+  padding:4px 8px 0;
+}
 
 /* Phasebook + Round-history rows (used inside their respective modals) */
 .p10-pb-row{
@@ -4260,7 +4328,6 @@ function appendCategoryRow(cat, suggestion){
       const willBonus = bonusOnCommit(cat.key, dice, p);
       cell.classList.add("preview");
       if (val === 0 && !willBonus) cell.classList.add("zero");
-      if (suggestion && suggestion.cat.key === cat.key && !suggestion.wasted) cell.classList.add("suggested");
       if (constraint && (constraint.require || constraint.choose)) cell.classList.add("joker-allowed");
       if (constraint && constraint.force0) cell.classList.add("joker-force0");
       cell.innerHTML = willBonus
@@ -4287,9 +4354,9 @@ function appendSubtotalRow(label, hint, fn, grand){
   labelCell.innerHTML = `<span class="cat-name">${label}</span>`;
   $scGrid.appendChild(labelCell);
 
-  let ranks = null, lastIdx = -1;
+  let ranks = null, lastIdx = -1, totals = null, distinctTotals = 0;
   if (grand){
-    const totals = state.players.map(fn);
+    totals = state.players.map(fn);
     const sorted = totals.map((t,i) => ({i, total:t})).sort((a,b) => b.total - a.total);
     ranks = new Array(state.players.length).fill(null);
     let curRank = 0, lastTotal = null;
@@ -4303,6 +4370,7 @@ function appendSubtotalRow(label, hint, fn, grand){
     if (someoneHasScore && minT !== maxT){
       if (totals.filter(t => t === minT).length === 1) lastIdx = totals.indexOf(minT);
     }
+    distinctTotals = new Set(totals).size;
   }
 
   state.players.forEach((p, i) => {
@@ -4317,11 +4385,14 @@ function appendSubtotalRow(label, hint, fn, grand){
       const total = fn(p);
       const someoneHasScore = state.players.some(x => filledCount(x) > 0);
       const isLast = i === lastIdx;
+      // Show medals whenever there's a clear ranking and at least 2 distinct totals.
+      const showMedal = someoneHasScore && distinctTotals > 1 && r != null && r <= 2;
       if (r === 0 && someoneHasScore) cell.classList.add("rank-gold");
       else if (r === 1 && someoneHasScore) cell.classList.add("rank-silver");
       else if (r === 2 && someoneHasScore) cell.classList.add("rank-bronze");
       if (isLast) cell.classList.add("rank-last");
-      cell.innerHTML = `<span class="grand-val"><span class="num">${total}</span></span>`;
+      const medalHtml = showMedal ? `<span class="medal">${r + 1}</span>` : "";
+      cell.innerHTML = `<span class="grand-val">${medalHtml}<span class="num">${total}</span></span>`;
     } else {
       cell.innerHTML = `<span>${fn(p)}</span>`;
     }
@@ -4538,7 +4609,9 @@ function renderTray(){
   insights.className = "roll-insights" + (statsPanelOpen ? " open" : "");
   insights.innerHTML = `
     <button class="ri-bar" type="button" aria-expanded="${statsPanelOpen ? "true" : "false"}">
+      <span class="ri-collapsed-label">Roll Insights</span>
       <span class="ri-bar-loading">Reading the table…</span>
+      <svg class="ri-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
     <div class="ri-body">
       <div class="ri-loading">Reading the table…</div>
@@ -4562,7 +4635,10 @@ function renderTray(){
     if (reqId !== statsRenderToken) return;
     const results = computeStats(playerSnap, diceSnap, rollsSnap);
     if (!results || results.length === 0){
-      $bar.innerHTML = `<span class="ri-bar-empty">No open categories</span>`;
+      $bar.innerHTML = `
+        <span class="ri-collapsed-label">Roll Insights</span>
+        <span class="ri-bar-empty">No open categories</span>
+        <svg class="ri-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       $body.innerHTML = `<div class="ri-empty">Nothing to plan — every category is locked in.</div>`;
       return;
     }
@@ -4717,6 +4793,7 @@ function clearDie(idx){
 }
 function addDieValue(v){
   if (state.gameOver || state.hailMary) return;
+  if (!Number.isInteger(v) || v < 1 || v > 6) return;
   // Find first empty slot, else replace the last
   let idx = state.dice.findIndex(d => d === 0);
   if (idx === -1) idx = 4;
@@ -4901,6 +4978,8 @@ function startHailMary(){
 }
 
 function cancelHailMary(){
+  // Safe to null without rollback: source/target are only mutated atomically
+  // in selectHailMaryTarget; nothing is half-applied between start and cancel.
   state.hailMary = null;
   render();
 }
@@ -5158,11 +5237,20 @@ function showSetupModal({title, initialPlayers, onConfirm}){
       nameInput.value = p.name;
       nameInput.maxLength = 20;
       nameInput.placeholder = `Player ${i+1}`;
-      nameInput.addEventListener("input", () => { p.name = nameInput.value; });
+      nameInput.addEventListener("input", () => {
+        p.name = nameInput.value;
+        // Live-clear errors on edit so the user gets instant feedback when
+        // they fix a duplicate.
+        row.classList.remove("has-error");
+      });
       nameInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); $modalRoot.querySelector('[data-act="confirm"]').click(); }
       });
       row.appendChild(nameInput);
+
+      const hint = document.createElement("span");
+      hint.className = "setup-name-hint";
+      row.appendChild(hint);
 
       const remove = document.createElement("button");
       remove.className = "setup-remove";
@@ -5202,6 +5290,35 @@ function showSetupModal({title, initialPlayers, onConfirm}){
       color: d.color, glow: d.glow,
     }));
     if (cleaned.length < 2){ showToast("Need at least 2 players", "warn"); return; }
+
+    // Inline duplicate-name check. Compare by lowercase so "Sam" / "sam" trip
+    // it. Mark every offending row, not just the second occurrence, so the
+    // user can see which names collide.
+    const rowsEls = list.querySelectorAll(".setup-row");
+    rowsEls.forEach(r => {
+      r.classList.remove("has-error");
+      const h = r.querySelector(".setup-name-hint");
+      if (h) h.textContent = "";
+    });
+    const seen = new Map();
+    let hasError = false;
+    cleaned.forEach((c, i) => {
+      const key = c.name.toLowerCase();
+      if (seen.has(key)){
+        hasError = true;
+        [seen.get(key), i].forEach(idx => {
+          const r = rowsEls[idx];
+          if (!r) return;
+          r.classList.add("has-error");
+          const h = r.querySelector(".setup-name-hint");
+          if (h) h.textContent = "Name already in use";
+        });
+      } else {
+        seen.set(key, i);
+      }
+    });
+    if (hasError) return;
+
     onConfirm(cleaned);
   });
 
@@ -5716,6 +5833,7 @@ function renderInsightBar(ins){
     ? (ins.value === 0 ? "0 pts" : `${ins.value} pts`)
     : _fmtPct(ins.odds);
   return `
+    <span class="ri-collapsed-label">Roll Insights</span>
     <span class="ri-dot mood-${ins.mood}"></span>
     <span class="ri-phrase">${escapeHtml(ins.phrase)}</span>
     <span class="ri-odds">${oddsLabel}</span>
@@ -6666,6 +6784,9 @@ const P10 = (() => {
       if (!p?.players?.length) return null;
       if (typeof p.dealerTracking === "undefined") p.dealerTracking = false;
       if (typeof p.dealerIdx === "undefined") p.dealerIdx = 0;
+      // Clamp in case a malformed save (or older version) stored an idx past
+      // the current player count.
+      p.dealerIdx = Math.max(0, Math.min(p.dealerIdx | 0, p.players.length - 1));
       if (typeof p.twisted === "undefined") p.twisted = false;
       // Backfill phaseOrder if missing (older saves had only currentPhase 1..10)
       p.players.forEach(pl => {
@@ -6891,14 +7012,61 @@ const P10 = (() => {
   }
   function togglePlayerCleared(id){
     const p = state.players.find(x => x.id === id);
-    if (!p) return;
+    if (!p) return false;
     if (p.currentPhase > 10){
       showToast(`${p.name} already finished all 10 phases`, "warn");
-      return;
+      return false;
     }
     p.pendingCleared = !p.pendingCleared;
     SFX.toggle();
     saveState();
+    return true;
+  }
+
+  /* Commit-round validity check.  In Phase 10 the round ends when one
+   * player goes out (plays their last card).  That player scores 0 and must
+   * be marked cleared.  Everyone else still has cards in hand and so MUST
+   * have a non-zero penalty score.  Therefore a valid round entry has:
+   *   - at most one non-finished player with pendingScore == 0
+   *   - that zero player MUST be pendingCleared (the "out" player)
+   *   - every other non-finished player MUST have pendingScore > 0   */
+  function commitRoundValidation(){
+    let outCount = 0, missingScore = 0, anyEntered = false;
+    state.players.forEach(p => {
+      if (p.currentPhase > 10) return; // already finished — skip
+      const score = p.pendingScore | 0;
+      if (score > 0 || p.pendingCleared) anyEntered = true;
+      if (score === 0){
+        if (p.pendingCleared) outCount++;
+        else missingScore++;
+      }
+    });
+    let reason = null;
+    if (!anyEntered) reason = "empty";
+    else if (outCount > 1) reason = "too-many-out";
+    else if (missingScore > 0) reason = "missing-score";
+    return { ok: reason === null, reason };
+  }
+
+  // Briefly pulse the rows responsible for an invalid Commit attempt.
+  function pulseInvalidRows(reason){
+    const rows = document.querySelectorAll("#p10-roster .p10-row");
+    rows.forEach((rowEl, i) => {
+      const p = state.players[i];
+      if (!p || p.currentPhase > 10) return;
+      const score = p.pendingScore | 0;
+      const culprit =
+        reason === "empty" ||
+        (reason === "missing-score" && score === 0 && !p.pendingCleared) ||
+        (reason === "too-many-out" && score === 0 && p.pendingCleared);
+      if (!culprit) return;
+      const entry = rowEl.querySelector(".p10-row-entry");
+      if (!entry) return;
+      entry.classList.remove("pulse-invalid");
+      void entry.offsetWidth; // restart animation if already running
+      entry.classList.add("pulse-invalid");
+      setTimeout(() => entry.classList.remove("pulse-invalid"), 2900);
+    });
   }
   function clearAllPending(){
     pushHistory();
@@ -7003,9 +7171,11 @@ const P10 = (() => {
       // Entry — per-row inline input. Always visible while game is live.
       if (!state.gameOver){
         const entry = document.createElement("div");
-        entry.className = "p10-row-entry" + (p.pendingCleared ? " did-clear" : "") + (p.pendingScore > 0 ? " has-score" : "");
+        entry.className = "p10-row-entry"
+          + (p.pendingCleared ? " did-clear" : "")
+          + (p.pendingScore > 0 ? " has-score" : "");
         entry.innerHTML = `
-          <button class="p10-clear-toggle ${p.pendingCleared ? "checked" : ""}" data-cleared aria-pressed="${p.pendingCleared}" ${isDone?"disabled":""}>
+          <button class="p10-clear-toggle ${p.pendingCleared ? "checked" : ""}" data-cleared aria-pressed="${p.pendingCleared}" ${isDone ? "disabled" : ""}>
             <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
             <span class="lbl">${isDone ? "Finished" : willAdvance ? `Cleared · → ${nextPhaseLabel(p)}` : "Cleared phase"}</span>
           </button>
@@ -7026,15 +7196,14 @@ const P10 = (() => {
           </div>
         `;
         row.appendChild(entry);
-        // Wire field
         const $field = entry.querySelector(".p10-score-field");
+        const $clr = entry.querySelector("[data-cleared]");
+
         $field.addEventListener("input", () => {
           const cleaned = $field.value.replace(/\D/g,"").slice(0,4);
           if (cleaned !== $field.value) $field.value = cleaned;
           setPlayerScore(p.id, parseInt(cleaned||"0",10));
-          // Update entry style + sidebar summary without full re-render so the
-          // input keeps focus + selection.
-          entry.classList.toggle("has-score", (p.pendingScore|0) > 0);
+          entry.classList.toggle("has-score", (p.pendingScore | 0) > 0);
           renderSidebar();
         });
         $field.addEventListener("focus", () => {
@@ -7042,11 +7211,10 @@ const P10 = (() => {
           $field.select();
         });
         $field.addEventListener("blur", () => row.classList.remove("focused"));
-        // Wire cleared toggle — toggle in-place to avoid stomping the active
-        // score field's focus and selection.
-        const $clr = entry.querySelector("[data-cleared]");
+
         $clr.addEventListener("click", () => {
-          togglePlayerCleared(p.id);
+          const ok = togglePlayerCleared(p.id);
+          if (!ok) return;
           $clr.classList.toggle("checked", !!p.pendingCleared);
           $clr.setAttribute("aria-pressed", p.pendingCleared ? "true" : "false");
           const phaseDef2 = p.currentPhase <= 10 ? PHASES[p.currentPhase - 1] : null;
@@ -7058,7 +7226,6 @@ const P10 = (() => {
               : willAdvance2 ? `Cleared · → ${nextPhaseLabel(p)}`
               : "Cleared phase";
           }
-          // Update sidebar summary too
           renderSidebar();
         });
       }
@@ -7105,6 +7272,17 @@ const P10 = (() => {
     const dealerName = state.dealerTracking ? (state.players[state.dealerIdx]?.name || "—") : null;
     const totalPhasesCleared = state.players.reduce((s,p)=>s+p.cleared.length,0);
 
+    // Round validity. The round ends when one player goes out (0 pts +
+    // cleared); everyone else penalizes their hand. Anything else is a
+    // mis-entry waiting to happen.
+    const validation = commitRoundValidation();
+    const commitHint = validation.reason === "empty" ? "Enter scores or mark who went out"
+      : validation.reason === "too-many-out" ? "Only one player can go out per round"
+      : validation.reason === "missing-score" ? "Each remaining player needs a score above 0"
+      : "";
+    const commitDisabled = !validation.ok;
+    const roundEmpty = pendingTotal === 0 && clearedCount === 0;
+
     $right.innerHTML = `
       <div class="p10-side">
         <div class="p10-side-hero">
@@ -7133,16 +7311,27 @@ const P10 = (() => {
         </div>
 
         <div class="p10-side-action">
-          <button class="p10-commit" id="p10-commit">
+          <button class="p10-commit ${commitDisabled ? "is-locked" : ""}" id="p10-commit" ${commitDisabled ? 'aria-disabled="true"' : ""}>
             Commit round ${state.round}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <button class="p10-clear-row" id="p10-clear-all" ${pendingTotal === 0 && clearedCount === 0 ? "disabled" : ""}>Clear entries</button>
+          ${commitHint ? `<div class="p10-commit-hint">${commitHint}</div>` : ""}
+          <button class="p10-clear-row" id="p10-clear-all" ${roundEmpty ? "disabled" : ""}>Clear entries</button>
         </div>
       </div>
     `;
 
-    $right.querySelector("#p10-commit").addEventListener("click", commitRound);
+    $right.querySelector("#p10-commit").addEventListener("click", () => {
+      // Flush any in-flight score input — without this, tapping Commit while
+      // still focused on a score field could miss the just-typed value.
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains("p10-score-field")){
+        active.blur();
+      }
+      const v = commitRoundValidation();
+      if (v.ok){ commitRound(); return; }
+      pulseInvalidRows(v.reason);
+    });
     $right.querySelector("#p10-clear-all").addEventListener("click", () => clearAllPending());
   }
 
