@@ -119,6 +119,7 @@ Things that *should* animate:
 - Score commits (one-shot pop)
 - Cleared phase / Yahtzee (confetti + tone + check stamp)
 - Cleared-toggle checkbox (color settle)
+- Validation feedback when the user tries an invalid action — e.g. tapping a locked Phase 10 Commit triggers a 2.8s red box-shadow ripple on the offending rows. The action itself stays inert; the animation surfaces *which* rows are at fault.
 
 ## Active vs inactive states
 
@@ -159,17 +160,29 @@ Solid surfaces only:
 
 Page-level scroll only when needed. Inner panels never have their own scrollbars except modal lists (which have `max-height: 60vh`).
 
+## Yahtzee scorecard cells
+
+Three states, visually unmistakable:
+
+- **Locked** — solid number, normal weight, full text color. Reads as data.
+- **Preview** (active player + dice complete) — italic, dashed pill outline tinted by player color, soft player-tinted fill. Reads as "click to commit." No single preview is elevated above its peers — picking the play is the player's call.
+- **Empty** — `·` middle-dot in `--text-4`. Reads as unfilled.
+
+The grand-total row renders 1/2/3 medal pills in gold/silver/bronze whenever totals diverge. They appear during play, not just at game end — a running leaderboard.
+
+Inline validation pattern (used by Phase 10 Commit and the setup-modal duplicate-name guard): the offending input gets a red bottom-border or dashed ring + a small red hint text. No popups, no toasts — the user fixes it in place.
+
 ## Roll Insights aesthetic
 
 The Yahtzee tactical companion lives by these rules:
 
-- **Glanceable first.** The collapsed 1-line bar always says something useful.
+- **Opt-in.** Collapsed bar shows just "Roll Insights" + chevron — no spoilers. Users who don't want hints don't have to read them.
 - **Small expanded.** ~140px max — no scroll, no dashboard.
-- **Mood, not data.** A status dot maps to a tone (`strong`, `live`, `upside`, `safe`, `long`, `locked`, `sacrifice`). The phrase tells the story; the percentage is supporting.
+- **Mood, not data.** Once expanded, a status dot maps to a tone (`strong`, `live`, `upside`, `safe`, `long`, `locked`, `sacrifice`). The phrase tells the story; the percentage is supporting.
 - **Chips for alternatives.** Up to three near-miss options as compact chips. Tapping a chip swaps focus.
 - **Plan-for segment.** Tiny rolls-left segmented control. Not a labeled slider, not a stepper.
 
-Don't reintroduce: per-category cards, stat tiers, percentage bars per category, a "Stats for Geeks" header, dashboard grids.
+Don't reintroduce: per-category cards, stat tiers, percentage bars per category, a "Stats for Geeks" header, dashboard grids, or surfacing the recommended play on the collapsed bar.
 
 ## Anti-patterns rejected over multiple iterations
 
@@ -203,6 +216,8 @@ These were tried and removed; don't bring them back without explicit user approv
 
 **Layout**
 - ❌ Always-visible Roll Insights body (must collapse)
+- ❌ Roll Insights collapsed bar leaking the recommended play (must be neutral until expanded)
+- ❌ Auto-highlighted "suggested" preview cell on the scorecard (all previews look equally tentative)
 - ❌ Inner-scrolling accordions for phasebook + history (now modals)
 - ❌ Page-level vertical scrolling on Yahtzee or Phase 10 (sized to fit)
 - ❌ Per-category stat cards in a 2-col grid (replaced by chips)

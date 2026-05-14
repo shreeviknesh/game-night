@@ -29,19 +29,22 @@ State is autosaved to `localStorage` on the device. Closing the tab and re-openi
 - Joker rule + multi-Yahtzee bonuses, with auto-detected constraints
 - "Hail Mary" house rule (once-per-game zero swap)
 - Type dice via keypad or `1`–`6` shortcuts
-- **Roll Insights** — a compact tactical companion that fits next to the tray. One-line collapsed ("Large Straight live · 62%"), small expanded card with the best play, near-miss chips, and roll-planner segment. Powered by closed-form probability where possible, Monte Carlo otherwise.
+- **Roll Insights** — a compact tactical companion that fits next to the tray. Collapsed by default (one-line label + chevron, no spoilers). Expand for the best-play card, near-miss chips, and the roll-planner segment. Powered by closed-form probability where possible, Monte Carlo otherwise.
+- Preview cells in the active column are italic dashed pills — clearly tentative, never confused with locked scores. The grand-total row shows 1/2/3 pills in gold/silver/bronze whenever totals diverge.
 - 6 themes (Midnight default, Retro 98, Casino, Cyberpunk, Gameboy, Newsprint) with theme-flavored audio
 - PNG export of the final scorecard
 
 ### Phase 10
 - 2–10 players
 - **Round-based scoring** — every player's score for the round is entered inline on their roster row, then committed in one shot. No turn rotation pretense; matches how the game actually plays.
+- **Round-validity gate** — Commit is disabled unless exactly one player goes out (0 pts + cleared) and every other non-finished player has a non-zero score. Inline hint explains why; tapping a locked Commit pulses the offending rows red.
 - All ten official phases — the rule is shown next to the phase number on every row
 - **Twisted Phases** variant — each player gets a randomized order of all ten phases. Tap any player's phase track to see their full per-slot order.
 - Optional **dealer tracking** with auto-rotation each round (Settings → Track dealer)
 - Round-by-round history modal + cross-game archive of completed games
 - Quick-add chips (+5 / +10 / +15 / +25 / +50) for typical card values
 - Native numeric input on mobile (`inputmode="numeric"`)
+- Setup blocks duplicate player names with an inline hint (covers Yahtzee setup too)
 
 ## File map
 
@@ -49,17 +52,13 @@ State is autosaved to `localStorage` on the device. Closing the tab and re-openi
 game-night/
 ├── index.html               # The entire app (HTML + CSS + JS)
 ├── README.md                # You are here
-├── docs/
-│   ├── DESIGN.md            # Visual + interaction design system
-│   ├── ARCHITECTURE.md      # State, router, modules, persistence
-│   ├── YAHTZEE.md           # Yahtzee module specifics
-│   ├── PHASE10.md           # Phase 10 module specifics
-│   ├── CHANGELOG.md         # Major iteration passes
-│   └── CONTRIBUTING.md      # Editing conventions
-└── snapshots/
-    ├── v1.html              # First fully-themed cohesive build
-    ├── v2.html              # Pre-reduction "premium UI" build
-    └── yahtzee-standalone.html  # Original Yahtzee tracker (single game)
+└── docs/
+    ├── DESIGN.md            # Visual + interaction design system
+    ├── ARCHITECTURE.md      # State, router, modules, persistence
+    ├── YAHTZEE.md           # Yahtzee module specifics
+    ├── PHASE10.md           # Phase 10 module specifics
+    ├── CHANGELOG.md         # Major iteration passes
+    └── CONTRIBUTING.md      # Editing conventions
 ```
 
 ## Browser support

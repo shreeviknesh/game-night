@@ -2,6 +2,10 @@
 
 Practical conventions for editing the codebase. Read `DESIGN.md` and `ARCHITECTURE.md` first.
 
+## Always update the docs
+
+Every substantive change to `index.html` should land in the same patch as the matching documentation update. The full mapping of "which doc covers what" lives in `CLAUDE.md` at the repo root, but the short version: user-visible features → `README.md` + `docs/CHANGELOG.md`; Yahtzee/Phase 10 internals → the relevant module doc; visual or interaction shifts → `docs/DESIGN.md`; state, router, persistence → `docs/ARCHITECTURE.md`; conventions or test checklist → this file. Bump `(current)` in `docs/CHANGELOG.md` for substantive batches. A Stop hook in `.claude/settings.json` will remind you before turn-end if you forget.
+
 ## Single-file constraint
 
 `index.html` is intentionally a single self-contained file. Don't introduce a build step, modules, or external dependencies. CDN scripts are also off-limits.
@@ -79,15 +83,20 @@ Then exercise:
 
 If you change scoring rules, also check the joker constraint paths and the multi-Yahtzee bonus.
 
-## Snapshots
+When changing Phase 10's commit flow or the round-validity gate, exercise:
+- Empty round → Commit disabled, hint "Enter scores or mark who went out"
+- Two players marked 0 + cleared → hint "Only one player can go out per round"
+- Player has 0 pts but isn't cleared → hint "Each remaining player needs a score above 0"
+- Tap a locked Commit → red ripple on the offending rows for ~2.8s
+- Tap Commit while focused on a score field → value still recorded (force-blur path)
 
-Significant cuts get archived under `snapshots/` so previous design decisions remain inspectable.
+When changing setup, exercise:
+- Two players with the same name → red bottom border + "Name already in use" hint; Confirm blocked
+- Edit one of them to a unique name → red clears live; Confirm proceeds
 
-- `yahtzee-standalone.html` — original single-game version (v0)
-- `v1.html` — first cohesive multi-game build (turn-based Phase 10)
-- `v2.html` — pre-reduction "premium UI" build
+## Version history
 
-Don't delete snapshots; add a new one (e.g. `v3.html`) for the next major design pivot.
+Significant releases are documented in `docs/CHANGELOG.md`. The git history (kept externally to this working tree) is the canonical record. Earlier `snapshots/` archive of pre-reduction builds was retired in v5.2 — past iterations live in git, not in the working tree.
 
 ## Style nits
 

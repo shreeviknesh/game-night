@@ -124,6 +124,8 @@ State shape (round-based — no per-player turn):
 
 Key flow: `commitRound()` applies every player's pending score + cleared flag in a single transaction, advances each player's `currentPhase` along their personal `phaseOrder`, increments `state.round`, rotates dealer if tracking is on, and checks end-of-game (any player with `cleared.length >= 10`).
 
+`commitRoundValidation()` returns `{ ok, reason }` and is the single source of truth for whether the Commit button is enabled. `pulseInvalidRows(reason)` derives the at-fault rows from the same conditions and applies a brief red-ring animation. See `PHASE10.md` for the rule.
+
 There is no `currentIdx`. Inputs live inline on each player's row; the right panel surfaces a compact round summary + commit.
 
 ## Persistence keys
@@ -149,7 +151,7 @@ Single slot at `#modal-root`. Helpers:
 - `closeModal()` — empties the slot
 - `showConfirm({title, body, confirmText, onConfirm})` — generic confirm
 - `showPrompt({title, placeholder, initial, onConfirm})` — text input
-- `showSetupModal({title, hint, maxPlayers, options, initialPlayers, onConfirm})` — player setup with optional toggles (used by both games; Phase 10 passes a "Twisted phases" option)
+- `showSetupModal({title, hint, maxPlayers, options, initialPlayers, onConfirm})` — player setup with optional toggles (used by both games; Phase 10 passes a "Twisted phases" option). Confirm blocks on duplicate names (case-insensitive) — offending rows get `.has-error` and a `.setup-name-hint` underneath; editing the name clears the error live.
 - `showThemeModal()` — theme picker
 - `showShortcuts()` — keyboard cheatsheet (view-aware)
 - `showHistoryModal()` — Yahtzee history

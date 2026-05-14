@@ -1,6 +1,6 @@
 # Yahtzee module
 
-Hasbro-correct scoring with the Joker rule, multi-Yahtzee bonuses, and the optional Hail Mary house rule. The original standalone version lives at `snapshots/yahtzee-standalone.html`.
+Hasbro-correct scoring with the Joker rule, multi-Yahtzee bonuses, and the optional Hail Mary house rule.
 
 ## Game flow
 
@@ -54,13 +54,9 @@ The compact tactical companion that lives next to the dice tray. Replaces the ol
 
 ### Collapsed (default, ~38px)
 
-A single line: status dot (mood-tinted) + contextual phrase + odds/value + chevron. Examples:
+A single neutral line: just the label "Roll Insights" + chevron. The collapsed bar deliberately does **not** leak the recommended play — users opt in by expanding. The mood dot, phrase, and odds only render once the panel is open.
 
-- `● Large Straight live · 62%`
-- `● Big upside on Sixes · 24`
-- `● Risky Yahtzee chase · 8%`
-- `● Safe Full House play · 78%`
-- `● Sacrifice into Ones · 0 pts`
+(Earlier builds surfaced the headline phrase like `● Large Straight live · 62%` on the collapsed bar. That was rejected as a tactical spoiler — the panel exists for users who want hints, not for ones who don't.)
 
 ### Expanded (~140px)
 
@@ -142,3 +138,19 @@ Yahtzee                              50
 ```
 
 This avoids users having to translate "what's a Full House score?" mid-play.
+
+## Scorecard cell visuals
+
+Three distinct states, deliberately easy to tell apart at a glance:
+
+- **Locked** (committed score) — solid number, normal weight, `--text` color. Looks like data.
+- **Preview** (active player, dice complete, allowed by Joker) — italic, dashed-pill outline tinted by player color, muted fill. Looks tappable and tentative; never elevated above its peers (no "suggested" highlight).
+- **Empty** — `·` middle-dot in `--text-4`. Looks unfilled.
+
+The grand-total row also renders 1/2/3 medal pills (gold/silver/bronze) when at least two distinct totals exist. They appear during play — not just at game end — so the row reads as a running leaderboard.
+
+## Sanity checks
+
+- `addDieValue(v)` rejects non-integer or out-of-range values silently. `1`–`6` keys remain the canonical input path.
+- `commitScore(catKey)` requires `diceComplete()`, blocks double-commits and Joker-forbidden cells with an inline toast + `SFX.invalid()`.
+- `cancelHailMary()` is safe to call at any point in the flow — source/target are only mutated atomically inside `selectHailMaryTarget()`.

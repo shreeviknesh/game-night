@@ -83,6 +83,26 @@ The right panel surfaces a balanced summary:
 5. Resets pending fields
 6. Calls `finalizeRound()` — checks game-over (any `cleared.length >= 10`) and rotates the dealer
 
+## Round-validity gate
+
+`commitRoundValidation()` returns `{ ok, reason }` and the renderer uses it to decide whether the Commit button is enabled. Because the round ends when one player goes out (plays their last card → 0 pts and cleared), a valid round entry has:
+
+- **Exactly one** non-finished player with `pendingScore === 0 && pendingCleared === true` (the "out" player).
+- **Every other** non-finished player has `pendingScore > 0`.
+- At least one player has either entered a score or marked cleared (otherwise it's an empty round).
+
+Reasons map to inline hints under the disabled Commit button:
+
+| `reason` | Hint |
+|---|---|
+| `"empty"` | Enter scores or mark who went out |
+| `"too-many-out"` | Only one player can go out per round |
+| `"missing-score"` | Each remaining player needs a score above 0 |
+
+Tapping a locked Commit triggers `pulseInvalidRows(reason)` — a 2.8-second red ring that ripples twice on the offending rows (the empty-score players, or the zero-and-cleared players in the too-many-out case). No toast — the inline hint already explains why.
+
+The Commit click handler also force-blurs any focused score field before validating, so a value typed but not yet committed via Enter/Tab is never silently dropped.
+
 ## Twisted Phases
 
 Toggled at setup time via the player-list extras toggle. Effects:
@@ -120,7 +140,7 @@ All accessible from the topbar (book / clock / archive / cog icons).
 | `phase10.tracker.v1` | full state (auto-migrated for older saves) |
 | `phase10.history.v1` | last 50 completed games |
 
-Older saves missing `phaseOrder` / `twisted` / `dealerTracking` / `dealerIdx` are backfilled to defaults on load (standard order, dealer off).
+Older saves missing `phaseOrder` / `twisted` / `dealerTracking` / `dealerIdx` are backfilled to defaults on load (standard order, dealer off). `dealerIdx` is also clamped to `0..players.length - 1` on load so a malformed save with an out-of-range index can't crash the renderer.
 
 ## Keyboard
 

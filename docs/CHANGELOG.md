@@ -2,7 +2,20 @@
 
 The project evolved across many iteration passes — this log captures the major ones.
 
-## v5.1 — Theme tune-up (current)
+## v5.2 — Sanity checks + scorecard polish (current)
+
+- **Yahtzee scorecard medals restored.** The grand-total row now shows a 1/2/3 pill in gold/silver/bronze whenever distinct totals exist. Useful as a running leaderboard, not just at game end. (The old pip was a `display:none` casualty of the v4 reduction.)
+- **Yahtzee preview cells reskinned.** Score previews on the active player's column are now italic, dashed-pill outlines tinted by player color — clearly tentative, never confused with locked scores. Removed the auto-highlight on the highest-scoring preview; picking the play is the player's call, not the engine's.
+- **Roll Insights collapsed by default.** The 1-line bar no longer leaks the recommended play. Collapsed shows just the label "Roll Insights" and the chevron; expanded reveals mood dot + phrase + odds as before. Saved state preserved.
+- **Yahtzee dice bounds.** `addDieValue` now silently rejects non-integers and out-of-range values (1–6). Hail Mary cancel verified safe (no half-applied mutations between start and cancel).
+- **Phase 10 round-validity gate.** Commit Round is now disabled unless the round is well-formed: at most one player may go out (0 pts + cleared), and every other non-finished player needs a non-zero score. Inline hint underneath the disabled button explains why ("Each remaining player needs a score above 0" / "Only one player can go out per round" / "Enter scores or mark who went out"). Tapping a locked Commit pulses a red ring on the offending rows for ~2.8s — two ripples, long enough to actually look at.
+- **Phase 10 Commit now flushes focused inputs.** Tapping Commit while still focused on a score field can no longer drop the just-typed value — the field is blurred first so its `input` handler flushes.
+- **Setup: duplicate-name guard.** Identical player names (case-insensitive) get caught at confirm time. Offending rows show a red bottom border + "Name already in use" hint. Editing the name clears the error live. Covers both Yahtzee and Phase 10 setup.
+- **Phase 10 dealer-idx clamp.** A malformed save with `dealerIdx >= players.length` no longer crashes rendering — clamped on `loadState`.
+- **Snapshots directory removed.** `v1.html`, `v2.html`, `yahtzee-standalone.html` are no longer carried in the working tree (history lives in the external git repo). README file map and CHANGELOG snapshot table pruned to match.
+- **Doc-sync infrastructure.** New `CLAUDE.md` at the repo root maps each kind of change to the markdown files that document it (e.g. visual changes → `DESIGN.md`, Phase 10 internals → `PHASE10.md`). New `.claude/settings.json` Stop hook nudges future Claude sessions to verify docs are in sync before ending a turn. `CONTRIBUTING.md` cross-links to both.
+
+## v5.1 — Theme tune-up
 
 - **Cricket theme removed.** Six themes now: Midnight, Retro 98, Casino, Cyberpunk, Gameboy, Newsprint. Saved cricket preferences fall back to Midnight.
 - **Newsprint repaired** on the home tiles and across all screens — it had been written against the v3 token contract and broke in v4. Solid paper-tone surfaces, restrained newspaper-red accent, italic em in the hero phrase.
@@ -75,18 +88,10 @@ The project evolved across many iteration passes — this log captures the major
 
 ## v0 — Standalone Yahtzee tracker
 
-- Original `yahtzee-tracker.html` (preserved at `snapshots/yahtzee-standalone.html`).
+- Original `yahtzee-tracker.html` standalone build (history retained in the external git repo; was previously archived in-tree as `snapshots/yahtzee-standalone.html` until v5.2).
 - Full Hasbro scoring, Joker rule, multi-Yahtzee bonuses, Hail Mary house rule.
 - 7 themes (Midnight, Retro 98, Casino, Cricket, Cyberpunk, Gameboy, Newsprint).
 - Web Audio synthesized SFX with theme-flavored voicing.
 - Closed-form expected-value stats panel ("Stats for Geeks" — later replaced by Roll Insights).
 - PNG export of the final scorecard.
 - Game history (last 50) + confetti celebrations.
-
-## Snapshots
-
-| File | Era |
-|----|----|
-| `snapshots/yahtzee-standalone.html` | v0 — original single-game tracker |
-| `snapshots/v1.html` | v1 — first cohesive multi-game build (turn-based Phase 10) |
-| `snapshots/v2.html` | v2 — pre-reduction "premium UI" build |
