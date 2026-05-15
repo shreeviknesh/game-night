@@ -200,6 +200,7 @@ These were tried and removed; don't bring them back without explicit user approv
 - ❌ Dice mini-roll on tile hover
 - ❌ Word-by-word hero reveal animation
 - ❌ Dot-ripple on hero meta
+- ❌ SaaS-pricing-card "active column" treatments — `transform:translateY()` lift, `box-shadow` outer glow, scale-up on the focused column. The active column gets one tint + one underline; if it's not loud enough, increase the tint percentage, don't add a second signal.
 
 **Surfaces**
 - ❌ `backdrop-filter: blur()` on chrome panels

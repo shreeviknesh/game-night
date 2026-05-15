@@ -2,7 +2,12 @@
 
 The project evolved across many iteration passes — this log captures the major ones.
 
-## v6 — Cloud persistence (current)
+## v6.1 — Active-column readability (current)
+
+- **Yahtzee active-column highlight is louder.** Column tint bumped from 6% to 12% of the player's color; the header underline thickened from 1.5px to 3px (rounded). Same one-signal-per-state rule, just legible at table distance and on every theme. Newsprint and Casino in particular were washing out the old 6% tint.
+- Phase 10 unchanged — round-based play has no per-turn active player to amplify; the existing `:focus-within` border on the score input remains the row-level signal.
+
+## v6 — Cloud persistence
 
 - **Games are saved to the cloud.** New `Cloud` shim talks to a Supabase Postgres backend (one `games` table, four `security definer` RPCs). Reads come from a per-game localStorage cache for instant first paint; an async refresh re-renders if the server has a newer rev. Writes go to cache synchronously, then fire-and-forget to Supabase. Failed writes queue at `gn.queue.v1` and drain on reconnect. The 41 existing synchronous `saveState()` call sites stay untouched.
 - **Share games by link.** Every new game claims a 6-char share code (Crockford base32 minus `0/1/I/O/L/U`) and stamps the URL as `#g/CODE`. A topbar share button copies the URL to clipboard. Anyone with the link can view + edit — no accounts.

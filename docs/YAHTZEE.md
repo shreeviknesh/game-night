@@ -149,6 +149,16 @@ Three distinct states, deliberately easy to tell apart at a glance:
 
 The grand-total row also renders 1/2/3 medal pills (gold/silver/bronze) when at least two distinct totals exist. They appear during play — not just at game end — so the row reads as a running leaderboard.
 
+## Active-column highlight
+
+The active player's column carries a single-signal treatment, intentionally compatible with `DESIGN.md`'s "no glow, no scale, no lift" rule:
+
+- The player-head cell sits on a 14% player-color tint and is anchored by a 3px rounded underline in the player's color (bleeds 2px below the cell so it visually hangs the column).
+- Every score cell in that column carries a 12% tint of the same player color (constant across `empty` / `locked` / `preview` states — the locked-score weight + the preview-pill border carry their own meaning on top).
+- Inactive heads dim to `opacity:0.82` so the active head reads as the focus without the inactive ones disappearing.
+
+Tint values are sized to be readable on the dark themes (Midnight, Cyberpunk, Gameboy) *and* the light/desaturated ones (Newsprint, Casino, Retro 98) without per-theme overrides for opacity. Theme-specific overrides only swap the underline color (`Cyberpunk` uses `--accent-3`, `Newsprint` uses `--accent`) — never the geometry.
+
 ## Sanity checks
 
 - `addDieValue(v)` rejects non-integer or out-of-range values silently. `1`–`6` keys remain the canonical input path.

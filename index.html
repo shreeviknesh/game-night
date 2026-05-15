@@ -839,7 +839,7 @@ input{background:none;border:none;outline:none}
   width:90%;text-align:center;
 }
 .sc-cell.player-head.active{
-  background:color-mix(in srgb, var(--pc) 9%, var(--bg-1));
+  background:color-mix(in srgb, var(--pc) 14%, var(--bg-1));
   z-index:4;
 }
 .sc-cell.player-head.active .head-name{
@@ -847,8 +847,9 @@ input{background:none;border:none;outline:none}
   font-weight:600;
 }
 .sc-cell.player-head.active::after{
-  content:"";position:absolute;bottom:-1px;left:0;right:0;height:1.5px;
+  content:"";position:absolute;bottom:-2px;left:0;right:0;height:3px;
   background:var(--pc);
+  border-radius:1px;
 }
 .sc-cell.player-head.add-head{padding:0;background:transparent;border-bottom:none}
 .head-add{
@@ -871,13 +872,15 @@ input{background:none;border:none;outline:none}
   cursor:default;
   position:relative;
 }
-/* Active player column: a single soft tint, no side rails. The active-col
- * stays visually grounded — the focus is the player-head underline above. */
+/* Active player column: a single soft tint paired with the thicker
+ * player-head underline above. One signal per state — no rails, no
+ * shadow lift, no scale. Tint at 12% reads on every theme without
+ * overpowering the score numbers. */
 .sc-cell.score.active-col{
-  background:color-mix(in srgb, var(--pc) 6%, transparent);
+  background:color-mix(in srgb, var(--pc) 12%, transparent);
 }
 .sc-cell.score.active-col.empty,.sc-cell.score.active-col.locked{
-  background:color-mix(in srgb, var(--pc) 6%, transparent);
+  background:color-mix(in srgb, var(--pc) 12%, transparent);
 }
 /* Inactive columns very subtly recede */
 .sc-grid:has(.player-head.active) .sc-cell.player-head:not(.active){
