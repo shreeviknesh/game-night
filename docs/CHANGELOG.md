@@ -2,7 +2,18 @@
 
 The project evolved across many iteration passes — this log captures the major ones.
 
-## v5.2 — Sanity checks + scorecard polish (current)
+## v6 — Cloud persistence (current)
+
+- **Games are saved to the cloud.** New `Cloud` shim talks to a Supabase Postgres backend (one `games` table, four `security definer` RPCs). Reads come from a per-game localStorage cache for instant first paint; an async refresh re-renders if the server has a newer rev. Writes go to cache synchronously, then fire-and-forget to Supabase. Failed writes queue at `gn.queue.v1` and drain on reconnect. The 41 existing synchronous `saveState()` call sites stay untouched.
+- **Share games by link.** Every new game claims a 6-char share code (Crockford base32 minus `0/1/I/O/L/U`) and stamps the URL as `#g/CODE`. A topbar share button copies the URL to clipboard. Anyone with the link can view + edit — no accounts.
+- **One-time migration.** First boot after upgrade detects existing localStorage saves (in-progress games + history summaries) and uploads them to the cloud. Synthetic-flagged history rows render in the archive normally; pre-migration full scorecards aren't reconstructible.
+- **Cloud status pip + offline UX.** Small dot in the topbar: green when synced, amber when writes are pending, red when offline. Share + New Game disable while offline. The pip hides entirely when `SUPABASE_URL` is unset, so the app degrades gracefully to localStorage-only.
+- **No new dependencies.** Supabase is reached through hand-rolled `fetch` against PostgREST RPC endpoints — no SDK, no `<script src=...>`, single-file constraint preserved.
+- **Abuse safeguards.** The anon key is public by design, so the schema includes two ceilings: a 256 KB `check` constraint on `state` (real game states are <50 KB), and a 200/day cap on `create_game` calls backed by a tiny `creates_per_day` counter table.
+- **New `supabase/schema.sql`** is the canonical record of the table + RPCs; user runs it once in the Supabase SQL editor. Idempotent — safe to re-run after schema changes.
+- **New `.gitignore`** keeps `.claude/settings.local.json`, `.env*`, OS/editor cruft, and `*.local.md` scratch files out of the working tree.
+
+## v5.2 — Sanity checks + scorecard polish
 
 - **Yahtzee scorecard medals restored.** The grand-total row now shows a 1/2/3 pill in gold/silver/bronze whenever distinct totals exist. Useful as a running leaderboard, not just at game end. (The old pip was a `display:none` casualty of the v4 reduction.)
 - **Yahtzee preview cells reskinned.** Score previews on the active player's column are now italic, dashed-pill outlines tinted by player color — clearly tentative, never confused with locked scores. Removed the auto-highlight on the highest-scoring preview; picking the play is the player's call, not the engine's.

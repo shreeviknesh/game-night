@@ -2,25 +2,25 @@
 
 A premium, single-file score tracker for tabletop game night. Currently ships with **Yahtzee** and **Phase 10**.
 
-No build step, no dependencies, no accounts. Open the HTML file in a browser and play.
+No build step, no dependencies, no accounts. Serve the file over HTTP and play.
 
 ## Quick start
 
-Open `index.html` in any modern browser:
+The app needs to be reached over `http(s)://` (the Supabase fetch is blocked
+on `file://`). Two easy options:
 
 ```sh
-open index.html      # macOS
-xdg-open index.html  # Linux
-start index.html     # Windows
+python3 -m http.server 8080 --directory .   # open http://localhost:8080
 ```
 
-Or serve the folder if you prefer:
+Or push the repo to GitHub Pages — `https://USER.github.io/game-night/`
+works as-is. The app degrades gracefully to localStorage-only if you
+haven't configured a Supabase project yet, so it's playable from the moment
+you open it.
 
-```sh
-python3 -m http.server 8080 --directory .
-```
-
-State is autosaved to `localStorage` on the device. Closing the tab and re-opening picks up exactly where you left off.
+State is saved to a Supabase Postgres database keyed by a short share code.
+A localStorage cache backs the first paint and keeps the current game
+playable offline; failed writes queue and retry on reconnect.
 
 ## Games included
 
@@ -52,6 +52,9 @@ State is autosaved to `localStorage` on the device. Closing the tab and re-openi
 game-night/
 ├── index.html               # The entire app (HTML + CSS + JS)
 ├── README.md                # You are here
+├── .gitignore               # Excludes .claude/settings.local.json, .env*, scratch files
+├── supabase/
+│   └── schema.sql           # Postgres schema + RPCs (run once in SQL editor)
 └── docs/
     ├── DESIGN.md            # Visual + interaction design system
     ├── ARCHITECTURE.md      # State, router, modules, persistence
@@ -88,33 +91,45 @@ Press `?` (or the help icon in the topbar) on any screen for a context-aware lis
 | `R` | Random fill (Yahtzee) |
 | `H` | Hail Mary swap (Yahtzee) |
 
-## Local data
+## Data storage
 
-The app writes to `localStorage`:
+Game state lives in Supabase Postgres (one `games` table, keyed by share
+code). A localStorage cache backs the first paint:
 
 | Key | Purpose |
 |---|---|
-| `yahtzee.tracker.v1` | Current Yahtzee game |
-| `yahtzee.history.v1` | Last 50 completed Yahtzee games |
-| `yahtzee.settings.v1` | Roll Insights state (rolls-left default + open/closed) |
+| `gn.cache.<code>` | Per-game cache (state + rev) |
+| `gn.current.yahtzee` / `gn.current.phase10` | Active code per game |
+| `gn.codes.v1` | Every code this device has touched |
+| `gn.queue.v1` | Offline write queue |
+| `gn.migrated.v1` | One-shot migration flag |
 | `yahtzee.theme.v1` | Active theme (shared with Phase 10) |
 | `yahtzee.sound.v1` | Mute state (shared with Phase 10) |
-| `phase10.tracker.v1` | Current Phase 10 game |
-| `phase10.history.v1` | Last 50 completed Phase 10 games |
+| `yahtzee.settings.v1` | Roll Insights state (rolls-left default + open/closed) |
 
-Clearing site data resets everything.
+Clearing site data on this device only loses cache + UI prefs — game data
+is recoverable via the share URL.
 
-## Updating the in-place copy in `~/Downloads`
+## Setting up Supabase
 
-If you've copied `index.html` to `~/Downloads/` on your Mac and you're playing from there, you can pull updates without losing saves — `localStorage` is keyed by file URL, so as long as the destination path is unchanged the existing games persist.
+The app works with `SUPABASE_URL` / `SUPABASE_ANON_KEY` left as `null`
+(localStorage-only mode). To enable cloud sync:
 
-A handy shell alias:
+1. Create a free Supabase project.
+2. Run `supabase/schema.sql` in the SQL editor.
+3. Copy `Project URL` + `anon public` key into the constants near the top
+   of the `<script>` block in `index.html`.
+4. In Supabase → Auth → URL Configuration, add the origin you serve from
+   (e.g. `https://USER.github.io`) to the allowed list.
 
-```sh
-alias gn-pull='scp clouddesk:/local/home/shreevks/game-night/index.html ~/Downloads/game-night.html'
-```
+The anon key is safe to ship in the HTML — RLS revokes direct table
+access, and the four `security definer` RPCs are the only attack surface.
 
-Then: `gn-pull` from your local terminal, **Cmd-Shift-R** in the browser tab.
+## Sharing games
+
+Each new game gets a 6-character share code (e.g. `XK7P-2M`) and stamps
+the URL as `#g/XK7P-2M`. A topbar button copies the link. Anyone with the
+URL can view + edit — no accounts.
 
 ## License
 

@@ -13,11 +13,15 @@ index.html
 │   ├── #app         max-width 1120px, min-height 100dvh, centered
 │   │   ├── .view#view-home      Game tile launcher
 │   │   ├── .view#view-yahtzee   Yahtzee tracker
-│   │   └── .view#view-phase10   Phase 10 tracker
+│   │   ├── .view#view-phase10   Phase 10 tracker
+│   │   └── .view#view-loading   Tiny placeholder while resolving #g/CODE
 │   ├── #toasts      Top-center toast stack
 │   └── #modal-root  Single modal slot
-└── <script>         ~4,800 lines · everything else
+└── <script>         ~5,200 lines · Cloud shim + game modules
 ```
+
+The script begins with the `Cloud` IIFE (Supabase persistence shim), then
+the Yahtzee module (module-scoped), then the Phase 10 module (`P10` IIFE).
 
 ## View router
 
@@ -128,21 +132,110 @@ Key flow: `commitRound()` applies every player's pending score + cleared flag in
 
 There is no `currentIdx`. Inputs live inline on each player's row; the right panel surfaces a compact round summary + commit.
 
-## Persistence keys
+## Persistence
 
-All `localStorage`. JSON-encoded, capped at 50 entries for history.
+Game data lives in Supabase Postgres (one `games` table, accessed via four
+`security definer` RPCs). A localStorage cache backs the first paint and
+gives the app full functionality offline. Device-level UI prefs (theme,
+sound, Roll Insights state) stay in localStorage as before.
 
-| Key | Owner |
-|----|----|
-| `yahtzee.tracker.v1` | Yahtzee in-progress game |
-| `yahtzee.history.v1` | Yahtzee completed games |
+### Cloud schema
+
+One row per game (in-progress *and* completed):
+
+| Column | Notes |
+|---|---|
+| `code` | Primary key — 6-char Crockford base32 (minus `0/1/I/O/L/U`) |
+| `kind` | `'yahtzee'` or `'phase10'` |
+| `state` | The whole game blob as `jsonb` |
+| `schema_ver` | Bumped per state-shape migration (currently 1) |
+| `game_over` | Stored generated column from `state->>'gameOver'` — drives the History query |
+| `started_at`, `updated_at`, `ended_at` | Timestamps |
+| `rev` | Monotonic per-row revision; bumped by trigger |
+
+RLS is enabled and direct anon access is revoked. The four RPCs are:
+`get_game(code)`, `create_game(kind, state, code)`,
+`save_game(code, state, expected_rev)` (returns `conflict: true` on stale
+rev — caller refetches and re-renders), and
+`list_completed_by_codes(kind, codes[])` (powers the History modal).
+
+**Abuse safeguards** (anon key is public by design):
+
+- `check (octet_length(state::text) <= 262144)` on the `games` table.
+  Real game states are <50 KB; 256 KB leaves headroom for shape growth.
+- `creates_per_day` counter table + `creates_per_day_check()` function
+  called from `create_game`. Caps at 200 new games per day across all
+  anon callers. Bump the constant if you legitimately need more.
+
+The whole `supabase/schema.sql` is idempotent — safe to re-run after
+edits. Constraints, tables, and indexes are guarded by `if not exists`
+or `do $$ if not exists ... $$` blocks; functions use `create or replace`.
+
+### `Cloud` shim
+
+A small IIFE near the top of `<script>` that wraps PostgREST in a
+synchronous-looking API. Its public surface:
+
+```
+Cloud.init({url, anonKey})
+Cloud.isConfigured() / isOnline() / status() / onStatusChange(fn)
+Cloud.makeCode()
+Cloud.readCache(code) / writeCache(code, payload)
+Cloud.createGame(kind, state)        -> {code, rev, updated_at}
+Cloud.loadGame(code)                 -> {code, kind, state, rev, ...} | null
+Cloud.saveGame(code, state, rev)     -> {rev, updated_at, conflict?}
+Cloud.listCompletedByCodes(kind, codes)
+Cloud.enqueueWrite(code, state) / Cloud.flushQueue()
+```
+
+All RPC calls are hand-rolled `fetch` — no Supabase JS SDK. Writes that
+fail offline land in the retry queue (`gn.queue.v1`), drained on `online`
+events, on `visibilitychange → visible`, and after every successful write.
+
+### Cache layout (localStorage)
+
+| Key | Role |
+|---|---|
+| `gn.cache.<code>` | Per-game cache: `{kind, state, rev, updated_at, savedAt}` |
+| `gn.current.yahtzee` / `gn.current.phase10` | Active code per game |
+| `gn.codes.v1` | Every code this device has touched (drives History) |
+| `gn.queue.v1` | Retry queue for offline writes |
+| `gn.migrated.v1` | One-shot flag — set after migration finishes |
 | `yahtzee.theme.v1` | Active theme (shared across both games) |
 | `yahtzee.sound.v1` | Mute state (shared) |
 | `yahtzee.settings.v1` | Roll Insights state: `{statsRollsLeft, statsPanelOpen}` |
-| `phase10.tracker.v1` | Phase 10 in-progress game |
-| `phase10.history.v1` | Phase 10 completed games |
+| (legacy `yahtzee.tracker.v1`, `yahtzee.history.v1`, `phase10.tracker.v1`, `phase10.history.v1`) | Read-only fallbacks; mirror writes happen until the migration flag is set |
 
-The theme + sound keys carry the `yahtzee.` prefix for legacy reasons — they're applied app-wide. Don't rename without a migration.
+The theme + sound keys carry the `yahtzee.` prefix for legacy reasons —
+they're applied app-wide. Don't rename without a migration.
+
+### Read / write paths
+
+- `saveState()` (both games): update in-memory `state`, sync-write the
+  legacy key + `gn.cache.<code>`, fire-and-forget `Cloud.saveGame`. On
+  rev conflict, swap to the server's state and toast
+  "Game updated elsewhere — refreshed."
+- `loadState()` (both games): if a `gn.current.<kind>` code is set, return
+  the cached state synchronously; otherwise fall back to the legacy
+  tracker key. The boot path also schedules an async `Cloud.loadGame()`
+  that re-renders if `remote.rev > cached.rev`.
+- `newGame()`: builds the new state, claims a code via
+  `Cloud.createGame`, stamps the URL via `history.replaceState('#g/CODE')`,
+  then `saveState()` runs as usual.
+
+### Sharing
+
+URL hash format: `#g/CODE` (kind is returned by the server). The hash
+dispatcher checks the cache first — if known, it navigates immediately.
+If unknown, it shows `#view-loading` and fetches before navigating.
+A `hashchange` listener handles browser back/forward across share URLs.
+
+### Configuration
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are top-of-script constants.
+When unset, every `Cloud` method becomes a no-op that just touches the
+cache, so the app stays fully functional without a backend (good for
+local dev + as a graceful-degradation path).
 
 ## Modal system
 

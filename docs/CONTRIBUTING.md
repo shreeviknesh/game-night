@@ -8,9 +8,29 @@ Every substantive change to `index.html` should land in the same patch as the ma
 
 ## Single-file constraint
 
-`index.html` is intentionally a single self-contained file. Don't introduce a build step, modules, or external dependencies. CDN scripts are also off-limits.
+`index.html` is intentionally a single self-contained file. Don't introduce a build step, modules, or external dependencies. CDN scripts are also off-limits — that's why the Cloud shim talks to Supabase directly via hand-rolled `fetch` rather than pulling in `@supabase/supabase-js`.
 
 If a feature genuinely needs build tooling, that's a project-level decision — file an issue first.
+
+## Supabase project setup
+
+The persistence layer is backed by Supabase. The HTML works without a
+backend (cache-only mode), but to enable cloud sync:
+
+1. Create a Supabase project (free tier is enough).
+2. Open the SQL editor and paste in `supabase/schema.sql`. It's
+   idempotent — safe to re-run after schema changes (constraints and
+   tables are guarded; functions use `create or replace`).
+3. From Project Settings → API, copy `Project URL` and `anon public` into
+   the `SUPABASE_URL` / `SUPABASE_ANON_KEY` constants near the top of
+   `<script>` in `index.html`.
+4. In Auth → URL Configuration, add the origin you serve from
+   (e.g. `https://USER.github.io`) to the allowed list, otherwise CORS
+   will block requests.
+
+The anon key is meant to be public — RLS revokes direct table access from
+`anon`, and the four `security definer` RPCs are the only attack surface.
+Don't ever embed a `service_role` key in HTML.
 
 ## Editing layout
 
@@ -68,6 +88,12 @@ Changing the state shape requires either:
 
 Don't silently break saves. Both modules already do `if (typeof p.x === "undefined") p.x = …` for new fields.
 
+For the cloud schema, bump the `schema_ver` column and apply the same
+migration ladder when reading rows whose `schema_ver` is older than the
+current code expects. The `Cloud.loadGame` cache write is the natural
+place to normalize; treat older cloud rows the way `loadState` already
+treats older localStorage shapes.
+
 ## Testing
 
 There's no test suite — verify visually:
@@ -93,6 +119,15 @@ When changing Phase 10's commit flow or the round-validity gate, exercise:
 When changing setup, exercise:
 - Two players with the same name → red bottom border + "Name already in use" hint; Confirm blocked
 - Edit one of them to a unique name → red clears live; Confirm proceeds
+
+When changing persistence, exercise:
+- Start a new game → URL becomes `#g/CODE`, row appears in Supabase `games` table
+- Click Share → URL on clipboard; opens cleanly in another browser
+- DevTools → Offline → score a category → pip turns amber, write lands in `gn.queue.v1`
+- Re-enable network → pip returns to green, queue clears within ~2s
+- Visit `#g/FAKE12` → Loading view briefly, then "Game not found" toast
+- Two browsers editing the same game → loser sees "Game updated elsewhere — refreshed"
+- Migration: in a profile with `yahtzee.tracker.v1`/`phase10.tracker.v1` populated and `gn.migrated.v1` cleared → reload, expect "Your saves are now in the cloud" toast and rows in Supabase
 
 ## Version history
 

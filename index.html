@@ -571,6 +571,28 @@ input{background:none;border:none;outline:none}
 .icon-btn:hover .tip{opacity:1}
 .topbar{z-index:50;position:relative}
 
+/* Cloud sync status pip — green/amber/red, no animation. */
+.cloud-pip{
+  width:8px;height:8px;border-radius:50%;
+  background:#86efac;
+  margin:0 6px;flex:none;align-self:center;
+  position:relative;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--surface-2) 60%,transparent);
+}
+.cloud-pip[data-status="pending"]{background:#fcd34d}
+.cloud-pip[data-status="offline"]{background:#fda4af}
+.cloud-pip .tip{
+  position:absolute;top:calc(100% + 8px);right:50%;transform:translate(50%,0);
+  background:var(--surface-3);
+  border:1px solid var(--border-strong);
+  padding:5px 9px;border-radius:var(--r-1);font-size:11.5px;color:var(--text-2);
+  font-weight:400;letter-spacing:-0.005em;
+  white-space:nowrap;pointer-events:none;opacity:0;
+  transition:opacity 0.15s var(--ease);
+  z-index:200;
+}
+.cloud-pip:hover .tip{opacity:1}
+
 /* =====================================================================
    Players bar
    ===================================================================== */
@@ -1950,6 +1972,23 @@ body[data-theme="ember"] .pip{
 .view.home.active{gap:0}
 @keyframes viewIn{from{opacity:0}to{opacity:1}}
 
+/* Loading view — shown briefly when resolving an unknown share code. */
+.loading-shell{
+  flex:1;display:grid;place-items:center;min-height:60vh;
+  width:100%;
+}
+.loading-card{
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  padding:28px 36px;
+  border:1px solid var(--border);border-radius:var(--r-2);
+  background:var(--surface-1);color:var(--text-2);
+}
+.loading-pulse{
+  width:24px;height:24px;border-radius:50%;
+  background:var(--text-4);
+}
+.loading-text{font-size:13.5px;letter-spacing:-0.005em;color:var(--text-3)}
+
 /* ===== Home screen — content-sized, centered ===== */
 .home{
   flex-direction:column;
@@ -3294,6 +3333,19 @@ body[data-theme="ember"] .pip{
       <span class="num">13</span>
     </div>
     <div class="topbar-actions">
+      <span class="cloud-pip" id="cloud-pip-y" data-status="ok" role="status" aria-live="polite">
+        <span class="tip">Cloud OK</span>
+      </span>
+      <button class="icon-btn" id="btn-share" aria-label="Share game link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"/>
+          <circle cx="6" cy="12" r="3"/>
+          <circle cx="18" cy="19" r="3"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+        <span class="tip">Share link</span>
+      </button>
       <button class="icon-btn" id="btn-undo" aria-label="Undo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 7v6h6"/>
@@ -3406,6 +3458,19 @@ body[data-theme="ember"] .pip{
         <span class="num" id="p10-round-num">1</span>
       </div>
       <div class="topbar-actions">
+        <span class="cloud-pip" id="cloud-pip-p" data-status="ok" role="status" aria-live="polite">
+          <span class="tip">Cloud OK</span>
+        </span>
+        <button class="icon-btn" id="p10-btn-share" aria-label="Share game link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"/>
+            <circle cx="6" cy="12" r="3"/>
+            <circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          <span class="tip">Share link</span>
+        </button>
         <button class="icon-btn" id="p10-btn-undo" aria-label="Undo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 7v6h6"/>
@@ -3499,6 +3564,17 @@ body[data-theme="ember"] .pip{
       </div>
     </section>
   </section><!-- /view-phase10 -->
+
+  <!-- ============================ LOADING VIEW ============================ -->
+  <!-- Shown only when arriving at #g/CODE we have nothing cached for. -->
+  <section class="view" id="view-loading" data-view="loading">
+    <div class="loading-shell">
+      <div class="loading-card">
+        <div class="loading-pulse"></div>
+        <div class="loading-text">Loading game…</div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div id="toasts"></div>
@@ -3666,6 +3742,254 @@ function suggestBest(player, dice){
 }
 
 /* =====================================================================
+ * CLOUD — Supabase-backed persistence shim
+ *
+ * The app reads from / writes to a small `Cloud` object so the 41 existing
+ * synchronous saveState() call sites can stay untouched. Inside Cloud:
+ *   - writes go to localStorage cache synchronously, then fire-and-forget
+ *     to Supabase via PostgREST RPCs (hand-rolled fetch — no SDK).
+ *   - reads return the cached value synchronously; an async cloud fetch
+ *     can re-render later if the server has a newer rev.
+ *   - failed writes queue at gn.queue.v1 and drain on reconnect.
+ *
+ * SUPABASE_URL / SUPABASE_ANON_KEY default to null. When unset, every
+ * Cloud method becomes a no-op that just touches the cache — the app
+ * stays fully functional without a backend (good for local dev and as a
+ * graceful-degradation path).
+ * ===================================================================== */
+const SUPABASE_URL = "https://gelbjbybcuztnhntbmsp.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlbGJqYnliY3V6dG5obnRibXNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MjUyMTEsImV4cCI6MjA5NDQwMTIxMX0.vrSueoOEj0IP7h5UpeFog4h-XL2v6YZQdFaMOhNwea8";
+
+const Cloud = (() => {
+  let cfg = { url: null, anonKey: null };
+  let lastSuccess = 0;
+  let lastFailure = 0;
+  const statusListeners = new Set();
+  let lastEmittedStatus = "ok";
+
+  // Crockford base32 minus 0/1/I/O/L/U for read-aloud + entry safety.
+  const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+  function makeCode(){
+    const buf = new Uint8Array(6);
+    crypto.getRandomValues(buf);
+    let s = "";
+    for (let i = 0; i < 6; i++) s += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
+    return s;
+  }
+
+  function isConfigured(){ return !!(cfg.url && cfg.anonKey); }
+
+  function computeStatus(){
+    if (!isConfigured()) return "ok"; // unconfigured: pretend everything's fine
+    if (!navigator.onLine) return "offline";
+    if (queueLength() > 0) return "pending";
+    if (lastFailure && (Date.now() - lastFailure) < 60_000 && lastFailure > lastSuccess) return "offline";
+    return "ok";
+  }
+
+  function emitStatus(){
+    const s = computeStatus();
+    if (s === lastEmittedStatus) return;
+    lastEmittedStatus = s;
+    for (const fn of statusListeners) { try { fn(s); } catch {} }
+  }
+
+  async function rpc(fn, body, { timeoutMs = 8000 } = {}){
+    if (!isConfigured()) throw new Error("cloud_not_configured");
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
+        method: "POST",
+        headers: {
+          "apikey": cfg.anonKey,
+          "Authorization": `Bearer ${cfg.anonKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        lastFailure = Date.now(); emitStatus();
+        throw new Error(`rpc ${fn} failed: ${res.status}`);
+      }
+      lastSuccess = Date.now(); emitStatus();
+      return await res.json();
+    } catch (e) {
+      lastFailure = Date.now(); emitStatus();
+      throw e;
+    } finally { clearTimeout(t); }
+  }
+
+  // ---- queue (last-write-wins per code) ----
+  const QUEUE_KEY = "gn.queue.v1";
+  function readQueue(){
+    try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch { return []; }
+  }
+  function writeQueue(q){
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch {}
+  }
+  function queueLength(){ return readQueue().length; }
+  function enqueueWrite(code, state){
+    const q = readQueue().filter(e => e.code !== code);
+    q.push({ code, state, attempts: 0, queuedAt: Date.now() });
+    writeQueue(q);
+    emitStatus();
+  }
+
+  let flushing = false;
+  async function flushQueue(){
+    if (flushing || !isConfigured() || !navigator.onLine) return;
+    flushing = true;
+    try {
+      const q = readQueue();
+      if (!q.length) return;
+      const remaining = [];
+      for (const entry of q) {
+        try {
+          // best-effort: read latest cache for rev
+          const cache = readCache(entry.code);
+          const expectedRev = cache?.rev ?? 1;
+          const [row] = await rpc("save_game", {
+            p_code: entry.code, p_state: entry.state, p_expected_rev: expectedRev,
+          });
+          if (row?.conflict) {
+            // server has newer; refetch + cache; drop the queued write (loser)
+            try {
+              const [g] = await rpc("get_game", { p_code: entry.code });
+              if (g) writeCache(entry.code, { kind: g.kind, state: g.state, rev: g.rev, updated_at: g.updated_at });
+            } catch {}
+          } else if (row) {
+            const merged = { ...(cache || {}), state: entry.state, rev: row.rev, updated_at: row.updated_at };
+            writeCache(entry.code, merged);
+          }
+        } catch (e) {
+          entry.attempts = (entry.attempts || 0) + 1;
+          if (entry.attempts < 5) remaining.push(entry);
+          // after 5 attempts, drop the write
+        }
+      }
+      writeQueue(remaining);
+      emitStatus();
+    } finally { flushing = false; }
+  }
+
+  // ---- cache (per-game blob) ----
+  function cacheKey(code){ return `gn.cache.${code}`; }
+  function readCache(code){
+    if (!code) return null;
+    try { return JSON.parse(localStorage.getItem(cacheKey(code)) || "null"); } catch { return null; }
+  }
+  function writeCache(code, payload){
+    if (!code) return;
+    const merged = { ...(payload || {}), code, savedAt: Date.now() };
+    try { localStorage.setItem(cacheKey(code), JSON.stringify(merged)); } catch {}
+  }
+
+  // ---- public API ----
+  return {
+    init({ url, anonKey } = {}){
+      cfg.url = url || null;
+      cfg.anonKey = anonKey || null;
+      if (isConfigured()){
+        window.addEventListener("online", () => { emitStatus(); flushQueue(); });
+        window.addEventListener("offline", emitStatus);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") flushQueue();
+        });
+      }
+      emitStatus();
+    },
+    isConfigured,
+    isOnline(){ return isConfigured() && navigator.onLine && lastEmittedStatus !== "offline"; },
+    status(){ return computeStatus(); },
+    onStatusChange(fn){ statusListeners.add(fn); fn(computeStatus()); return () => statusListeners.delete(fn); },
+
+    makeCode,
+    readCache,
+    writeCache,
+    enqueueWrite,
+    flushQueue,
+
+    async createGame(kind, initialState){
+      if (!isConfigured()) {
+        const code = makeCode();
+        writeCache(code, { kind, state: initialState, rev: 1, updated_at: new Date().toISOString() });
+        return { code, rev: 1, updated_at: new Date().toISOString() };
+      }
+      let attempts = 0;
+      while (true){
+        const code = makeCode();
+        try {
+          const [row] = await rpc("create_game", { p_kind: kind, p_state: initialState, p_code: code });
+          writeCache(code, { kind, state: initialState, rev: row.rev, updated_at: row.updated_at });
+          return { code, rev: row.rev, updated_at: row.updated_at };
+        } catch (e) {
+          // PK conflict -> retry up to 5 times, then surface
+          attempts++;
+          if (attempts >= 5) {
+            // fall back to local-only
+            writeCache(code, { kind, state: initialState, rev: 1, updated_at: new Date().toISOString() });
+            return { code, rev: 1, updated_at: new Date().toISOString(), offline: true };
+          }
+        }
+      }
+    },
+
+    async loadGame(code){
+      if (!code) return null;
+      if (!isConfigured()) {
+        const c = readCache(code);
+        return c ? { code, kind: c.kind, state: c.state, rev: c.rev || 1, updated_at: c.updated_at } : null;
+      }
+      try {
+        const rows = await rpc("get_game", { p_code: code });
+        const row = rows && rows[0];
+        if (!row) return null;
+        writeCache(code, { kind: row.kind, state: row.state, rev: row.rev, updated_at: row.updated_at });
+        return row;
+      } catch { return readCache(code) ? { ...readCache(code), code } : null; }
+    },
+
+    async saveGame(code, state, expectedRev){
+      if (!code) return null;
+      const cache = readCache(code) || { kind: null };
+      // always update cache synchronously
+      writeCache(code, { ...cache, state, rev: cache.rev || expectedRev || 1 });
+      if (!isConfigured()) return { rev: cache.rev || 1, updated_at: new Date().toISOString(), conflict: false };
+      try {
+        const [row] = await rpc("save_game", { p_code: code, p_state: state, p_expected_rev: expectedRev || cache.rev || 1 });
+        if (row?.conflict) {
+          // surface server's view back to caller
+          try {
+            const [g] = await rpc("get_game", { p_code: code });
+            if (g) writeCache(code, { kind: g.kind, state: g.state, rev: g.rev, updated_at: g.updated_at });
+            return { rev: g?.rev, updated_at: g?.updated_at, conflict: true, serverState: g?.state, serverKind: g?.kind };
+          } catch { return { conflict: true }; }
+        }
+        writeCache(code, { ...cache, state, rev: row.rev, updated_at: row.updated_at });
+        return { rev: row.rev, updated_at: row.updated_at, conflict: false };
+      } catch {
+        enqueueWrite(code, state);
+        return null;
+      }
+    },
+
+    async listCompletedByCodes(kind, codes){
+      if (!codes?.length) return [];
+      if (!isConfigured()) return [];
+      try {
+        return await rpc("list_completed_by_codes", { p_kind: kind, p_codes: codes });
+      } catch { return []; }
+    },
+  };
+})();
+
+Cloud.init({ url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY });
+
+/* =====================================================================
  * STATE
  * ===================================================================== */
 const STORAGE_KEY = "yahtzee.tracker.v1";
@@ -3738,6 +4062,24 @@ let state = loadState() || null;
 let editingNameId = null;
 let openColorPickerId = null;
 
+/* Async cloud refresh — runs after first paint. If the server has a newer
+ * rev than our cache, swap state and re-render. Lazy so a flaky network
+ * doesn't block boot. */
+function refreshYahtzeeFromCloud(){
+  const code = currentYahtzeeCode();
+  if (!code) return;
+  const cached = Cloud.readCache(code);
+  Cloud.loadGame(code).then(remote => {
+    if (!remote) return;
+    if (cached && (remote.rev || 0) <= (cached.rev || 0)) return;
+    if (!remote.state?.players?.length) return;
+    state = remote.state;
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{}
+    if (currentView === "yahtzee" && typeof render === "function") render();
+  }).catch(() => {});
+}
+queueMicrotask(refreshYahtzeeFromCloud);
+
 const SETTINGS_KEY = "yahtzee.settings.v1";
 function loadSettings(){
   try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); }catch{ return {}; }
@@ -3752,12 +4094,40 @@ let statsPanelOpen = !!_settings.statsPanelOpen;
 
 /* =====================================================================
  * PERSISTENCE
+ *
+ * Reads come from cache-first (gn.cache.<code>) when a code is bound,
+ * else fall back to the legacy STORAGE_KEY blob. Writes go to both: the
+ * legacy key (rollback safety net), the Cloud cache, and fire-and-forget
+ * to Supabase via Cloud.saveGame(). Until newGame() auto-creates a code,
+ * no code is bound and only the legacy mirror is touched.
  * ===================================================================== */
+function currentYahtzeeCode(){ return localStorage.getItem("gn.current.yahtzee") || null; }
+
 function saveState(){
   if (!state) return;
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  const code = currentYahtzeeCode();
+  if (!code) return;
+  const cache = Cloud.readCache(code) || {};
+  Cloud.writeCache(code, { ...cache, kind: "yahtzee", state });
+  // fire-and-forget — Cloud handles offline queueing internally
+  Cloud.saveGame(code, state, cache.rev || 1).then(res => {
+    if (res?.conflict && res.serverState && currentView === "yahtzee") {
+      state = res.serverState;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{}
+      if (typeof render === "function") render();
+      showToast("Game updated elsewhere — refreshed", "");
+    }
+  }).catch(() => {});
 }
 function loadState(){
+  // cache-first when we know which game this device is on
+  const code = currentYahtzeeCode();
+  if (code) {
+    const cached = Cloud.readCache(code);
+    if (cached?.state?.players?.length) return cached.state;
+  }
+  // legacy fallback
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -3766,7 +4136,14 @@ function loadState(){
     return p;
   }catch(e){ return null; }
 }
-function clearStorage(){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} }
+function clearStorage(){
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+  const code = currentYahtzeeCode();
+  if (code) {
+    try{ localStorage.removeItem(`gn.cache.${code}`); }catch{}
+    try{ localStorage.removeItem("gn.current.yahtzee"); }catch{}
+  }
+}
 
 /* History storage — last 50 completed games. */
 function loadHistory(){
@@ -5098,9 +5475,11 @@ function newGame(){
         hailMary: null,
       };
       closeModal();
-      saveState();
-      showToast("New game started", "success");
-      render();
+      claimNewYahtzeeCode(state).then(() => {
+        saveState();
+        showToast("New game started", "success");
+        render();
+      });
     }
   });
 }
@@ -6515,9 +6894,52 @@ window.addEventListener("keydown", (e) => {
 });
 
 /* =====================================================================
+ * SHARE — claim a code on new game, copy link on click
+ * ===================================================================== */
+
+/* Generate a code and register the game. Updates the URL hash + the
+ * gn.current.yahtzee pointer + gn.codes index. Tries Cloud first, falls
+ * back to a local-only code if unconfigured or offline. */
+async function claimNewYahtzeeCode(initialState){
+  try {
+    const r = await Cloud.createGame("yahtzee", initialState);
+    localStorage.setItem("gn.current.yahtzee", r.code);
+    addToCodeHistory(r.code);
+    history.replaceState(null, "", `#g/${formatCode(r.code)}`);
+    return r.code;
+  } catch {
+    // total failure — generate a local-only code so the rest of the app keeps working
+    const code = Cloud.makeCode();
+    Cloud.writeCache(code, { kind: "yahtzee", state: initialState, rev: 1 });
+    localStorage.setItem("gn.current.yahtzee", code);
+    addToCodeHistory(code);
+    history.replaceState(null, "", `#g/${formatCode(code)}`);
+    return code;
+  }
+}
+
+function shareYahtzeeLink(){
+  const code = currentYahtzeeCode();
+  if (!code){ showToast("No active game to share", "warn"); return; }
+  if (Cloud.isConfigured() && !Cloud.isOnline()){
+    showToast("Offline — share unavailable", "warn"); return;
+  }
+  const url = `${location.origin}${location.pathname}#g/${formatCode(code)}`;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(
+      () => showToast("Share link copied", "success"),
+      () => showToast(url, "")
+    );
+  } else {
+    showToast(url, "");
+  }
+}
+
+/* =====================================================================
  * INIT
  * ===================================================================== */
 document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-share").addEventListener("click", shareYahtzeeLink);
 document.getElementById("btn-theme").addEventListener("click", showThemeModal);
 document.getElementById("btn-mute").addEventListener("click", () => {
   const next = !soundOn;
@@ -6776,33 +7198,59 @@ const P10 = (() => {
 
   let state = null;
 
+  const CURRENT_KEY = "gn.current.phase10";
+  function currentCode(){ return localStorage.getItem(CURRENT_KEY) || null; }
+
+  // shape-normalizer pulled out so cache reads + legacy reads share it
+  function normalizeLoaded(p){
+    if (!p?.players?.length) return null;
+    if (typeof p.dealerTracking === "undefined") p.dealerTracking = false;
+    if (typeof p.dealerIdx === "undefined") p.dealerIdx = 0;
+    p.dealerIdx = Math.max(0, Math.min(p.dealerIdx | 0, p.players.length - 1));
+    if (typeof p.twisted === "undefined") p.twisted = false;
+    p.players.forEach(pl => {
+      if (!Array.isArray(pl.phaseOrder) || pl.phaseOrder.length !== 10){
+        pl.phaseOrder = [1,2,3,4,5,6,7,8,9,10];
+      }
+    });
+    return p;
+  }
+
   function loadState(){
+    const code = currentCode();
+    if (code) {
+      const cached = Cloud.readCache(code);
+      if (cached?.state) return normalizeLoaded(cached.state);
+    }
     try{
       const raw = localStorage.getItem(STORAGE);
       if (!raw) return null;
-      const p = JSON.parse(raw);
-      if (!p?.players?.length) return null;
-      if (typeof p.dealerTracking === "undefined") p.dealerTracking = false;
-      if (typeof p.dealerIdx === "undefined") p.dealerIdx = 0;
-      // Clamp in case a malformed save (or older version) stored an idx past
-      // the current player count.
-      p.dealerIdx = Math.max(0, Math.min(p.dealerIdx | 0, p.players.length - 1));
-      if (typeof p.twisted === "undefined") p.twisted = false;
-      // Backfill phaseOrder if missing (older saves had only currentPhase 1..10)
-      p.players.forEach(pl => {
-        if (!Array.isArray(pl.phaseOrder) || pl.phaseOrder.length !== 10){
-          pl.phaseOrder = [1,2,3,4,5,6,7,8,9,10];
-        }
-      });
-      return p;
+      return normalizeLoaded(JSON.parse(raw));
     }catch{ return null; }
   }
   function saveState(){
     if (!state) return;
     try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch{}
+    const code = currentCode();
+    if (!code) return;
+    const cache = Cloud.readCache(code) || {};
+    Cloud.writeCache(code, { ...cache, kind: "phase10", state });
+    Cloud.saveGame(code, state, cache.rev || 1).then(res => {
+      if (res?.conflict && res.serverState) {
+        state = normalizeLoaded(res.serverState);
+        try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch{}
+        if (typeof render === "function") render();
+        showToast("Game updated elsewhere — refreshed", "");
+      }
+    }).catch(() => {});
   }
   function clearState(){
     try{ localStorage.removeItem(STORAGE); }catch{}
+    const code = currentCode();
+    if (code) {
+      try{ localStorage.removeItem(`gn.cache.${code}`); }catch{}
+      try{ localStorage.removeItem(CURRENT_KEY); }catch{}
+    }
   }
 
   function loadHistory(){
@@ -7584,11 +8032,49 @@ const P10 = (() => {
           startedAt: Date.now(),
         };
         closeModal();
-        saveState();
-        showToast(twisted ? "Twisted Phases · new game" : "New game started", "success");
-        render();
+        claimNewCode(state).then(() => {
+          saveState();
+          showToast(twisted ? "Twisted Phases · new game" : "New game started", "success");
+          render();
+        });
       }
     });
+  }
+
+  /* Claim a server-side game code for the new state. Mirrors
+   * claimNewYahtzeeCode at the global scope. */
+  async function claimNewCode(initialState){
+    try {
+      const r = await Cloud.createGame("phase10", initialState);
+      localStorage.setItem(CURRENT_KEY, r.code);
+      addToCodeHistory(r.code);
+      history.replaceState(null, "", `#g/${formatCode(r.code)}`);
+      return r.code;
+    } catch {
+      const code = Cloud.makeCode();
+      Cloud.writeCache(code, { kind: "phase10", state: initialState, rev: 1 });
+      localStorage.setItem(CURRENT_KEY, code);
+      addToCodeHistory(code);
+      history.replaceState(null, "", `#g/${formatCode(code)}`);
+      return code;
+    }
+  }
+
+  function shareLink(){
+    const code = currentCode();
+    if (!code){ showToast("No active game to share", "warn"); return; }
+    if (Cloud.isConfigured() && !Cloud.isOnline()){
+      showToast("Offline — share unavailable", "warn"); return;
+    }
+    const url = `${location.origin}${location.pathname}#g/${formatCode(code)}`;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(
+        () => showToast("Share link copied", "success"),
+        () => showToast(url, "")
+      );
+    } else {
+      showToast(url, "");
+    }
   }
 
   function reset(){
@@ -7738,6 +8224,21 @@ const P10 = (() => {
     root.querySelector('[data-act="new"]').addEventListener("click", () => { closeModal(); newGame(); });
   }
 
+  function refreshFromCloud(){
+    const code = currentCode();
+    if (!code) return;
+    const cached = Cloud.readCache(code);
+    Cloud.loadGame(code).then(remote => {
+      if (!remote) return;
+      if (cached && (remote.rev || 0) <= (cached.rev || 0)) return;
+      const norm = normalizeLoaded(remote.state);
+      if (!norm) return;
+      state = norm;
+      try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch{}
+      if (currentView === "phase10") render();
+    }).catch(() => {});
+  }
+
   return {
     boot(){
       state = loadState();
@@ -7748,12 +8249,15 @@ const P10 = (() => {
         if (state.gameOver) setTimeout(showWinnerModal, 400);
         else setTimeout(()=>showToast("Resumed Phase 10 game", "success"), 300);
       }
+      queueMicrotask(refreshFromCloud);
     },
     render,
     undo,
     newGame,
     reset,
     loadState,
+    saveState,
+    shareLink,
     showSettings,
     showPhasesModal,
     showRoundsModal,
@@ -7775,6 +8279,7 @@ function onEnterPhase10(){
 
 document.getElementById("p10-back").addEventListener("click", () => navigate("home", "back"));
 document.getElementById("p10-btn-undo").addEventListener("click", () => P10.undo());
+document.getElementById("p10-btn-share").addEventListener("click", () => P10.shareLink());
 document.getElementById("p10-btn-theme").addEventListener("click", showThemeModal);
 document.getElementById("p10-btn-mute").addEventListener("click", () => {
   const next = !soundOn;
@@ -8081,7 +8586,203 @@ const _GN_keys = (e) => {
 window.addEventListener("keydown", _GN_keys);
 
 /* Persist on hide */
-window.addEventListener("beforeunload", () => { try{ P10.state && (localStorage.setItem("phase10.tracker.v1", JSON.stringify(P10.state))); }catch{} });
+window.addEventListener("beforeunload", () => { try{ if (P10.state) P10.saveState(); }catch{} });
+
+/* =====================================================================
+ * HASH ROUTING — supports #yahtzee, #phase10, #g/CODE
+ * ===================================================================== */
+function parseGameHash(){
+  const m = location.hash.match(/^#g\/([A-Za-z0-9-]+)$/);
+  if (!m) return null;
+  const code = m[1].replace(/-/g, "").toUpperCase();
+  if (code.length !== 6) return null;
+  return { code };
+}
+
+function formatCode(code){
+  // 6 chars -> XK7P-2M (4-2 split is more readable)
+  if (!code || code.length !== 6) return code;
+  return `${code.slice(0,4)}-${code.slice(4)}`;
+}
+
+function inferKindFromCache(code){
+  const c = Cloud.readCache(code);
+  return c?.kind || null;
+}
+
+function showLoadingView(){
+  const cur = document.querySelector(".view.active");
+  if (cur) cur.classList.remove("active");
+  document.getElementById("view-loading").classList.add("active");
+}
+function hideLoadingView(){
+  document.getElementById("view-loading").classList.remove("active");
+}
+
+/* Resolve a share-code URL: try cache first, fall back to a cloud fetch.
+ * Sets gn.current.<kind>, primes the cache, then navigates. */
+function resolveShareHash(){
+  const parsed = parseGameHash();
+  if (!parsed) return false;
+  const { code } = parsed;
+  const knownKind = inferKindFromCache(code);
+  if (knownKind){
+    localStorage.setItem(`gn.current.${knownKind}`, code);
+    addToCodeHistory(code);
+    setTimeout(() => navigate(knownKind, "forward"), 50);
+    return true;
+  }
+  // unknown locally — show loading view, fetch
+  showLoadingView();
+  Cloud.loadGame(code).then(g => {
+    hideLoadingView();
+    if (!g){
+      // restore home, surface error
+      const home = document.getElementById("view-home");
+      home.classList.add("active");
+      currentView = "home";
+      showToast("Game not found", "warn");
+      history.replaceState(null, "", location.pathname + location.search);
+      return;
+    }
+    localStorage.setItem(`gn.current.${g.kind}`, g.code);
+    addToCodeHistory(g.code);
+    Cloud.writeCache(g.code, { kind: g.kind, state: g.state, rev: g.rev, updated_at: g.updated_at });
+    // reset booted flag so onEnter picks up fresh state
+    if (g.kind === "yahtzee"){
+      _yahtzeeBooted = false;
+      state = g.state;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{}
+    } else if (g.kind === "phase10"){
+      _phase10Booted = false;
+    }
+    navigate(g.kind, "forward");
+  }).catch(() => {
+    hideLoadingView();
+    const home = document.getElementById("view-home");
+    home.classList.add("active");
+    currentView = "home";
+    showToast("Couldn't load that game", "warn");
+  });
+  return true;
+}
+
+/* =====================================================================
+ * CLOUD STATUS UI — pips + offline-disabled controls
+ * ===================================================================== */
+function applyCloudStatus(s){
+  const tip = ({
+    "ok": "Cloud OK",
+    "pending": "Pending writes — will retry",
+    "offline": "Offline — playing locally",
+  })[s] || s;
+  document.querySelectorAll(".cloud-pip").forEach(el => {
+    el.dataset.status = s;
+    const tipEl = el.querySelector(".tip");
+    if (tipEl) tipEl.textContent = tip;
+  });
+  // disable share + new game when offline AND cloud is configured
+  const offlineBlock = (s === "offline") && Cloud.isConfigured();
+  ["btn-share", "p10-btn-share", "btn-new", "p10-btn-new"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = offlineBlock;
+    if (offlineBlock) el.setAttribute("aria-disabled", "true");
+    else el.removeAttribute("aria-disabled");
+  });
+}
+Cloud.onStatusChange(applyCloudStatus);
+
+// Hide the pip entirely when cloud is unconfigured — no point teasing a status.
+if (!Cloud.isConfigured()){
+  document.querySelectorAll(".cloud-pip").forEach(el => { el.style.display = "none"; });
+}
+
+/* Track every code this device has touched for archive lookups. */
+const CODE_HISTORY_KEY = "gn.codes.v1";
+function addToCodeHistory(code){
+  if (!code) return;
+  try {
+    const list = JSON.parse(localStorage.getItem(CODE_HISTORY_KEY) || "[]");
+    if (list.includes(code)) return;
+    list.push(code);
+    localStorage.setItem(CODE_HISTORY_KEY, JSON.stringify(list.slice(-200)));
+  } catch {}
+}
+
+/* =====================================================================
+ * ONE-TIME MIGRATION — upload existing localStorage data to the cloud.
+ * Idempotent: gated by gn.migrated.v1. Skips silently if Cloud is
+ * unconfigured or offline (will retry on next boot).
+ * ===================================================================== */
+async function runOneTimeMigration(){
+  if (localStorage.getItem("gn.migrated.v1")) return;
+  if (!Cloud.isConfigured() || !navigator.onLine) return;
+
+  const tasks = [];
+
+  // 1) In-progress Yahtzee
+  try {
+    const raw = localStorage.getItem("yahtzee.tracker.v1");
+    if (raw){
+      const s = JSON.parse(raw);
+      if (s?.players?.length) tasks.push({ kind:"yahtzee", state:s, current:true });
+    }
+  } catch {}
+
+  // 2) In-progress Phase 10
+  try {
+    const raw = localStorage.getItem("phase10.tracker.v1");
+    if (raw){
+      const s = JSON.parse(raw);
+      if (s?.players?.length) tasks.push({ kind:"phase10", state:s, current:true });
+    }
+  } catch {}
+
+  // 3-4) History summaries — wrap as synthetic completed games. The
+  // history modals already render off summary fields, so synthetic rows
+  // appear in the archive normally; they just can't be re-rendered as
+  // full scorecards.
+  try {
+    const yh = JSON.parse(localStorage.getItem("yahtzee.history.v1") || "[]");
+    yh.forEach(entry => tasks.push({
+      kind: "yahtzee",
+      state: { synthetic: true, gameOver: true, summary: entry, startedAt: entry.startedAt, endedAt: entry.endedAt, players: [] },
+      current: false,
+    }));
+  } catch {}
+  try {
+    const ph = JSON.parse(localStorage.getItem("phase10.history.v1") || "[]");
+    ph.forEach(entry => tasks.push({
+      kind: "phase10",
+      state: { synthetic: true, gameOver: true, summary: entry, startedAt: entry.startedAt, endedAt: entry.endedAt, players: [] },
+      current: false,
+    }));
+  } catch {}
+
+  if (!tasks.length){
+    localStorage.setItem("gn.migrated.v1", "1");
+    return;
+  }
+
+  let uploaded = 0;
+  for (const t of tasks){
+    try {
+      const r = await Cloud.createGame(t.kind, t.state);
+      if (r?.code){
+        addToCodeHistory(r.code);
+        if (t.current) localStorage.setItem(`gn.current.${t.kind}`, r.code);
+        uploaded++;
+      }
+    } catch { /* try again next boot */ }
+  }
+
+  if (uploaded > 0){
+    localStorage.setItem("gn.migrated.v1", "1");
+    setTimeout(() => showToast("Your saves are now in the cloud", "success"), 600);
+  }
+}
+queueMicrotask(runOneTimeMigration);
 
 /* Start the app on the home view */
 renderHome();
@@ -8089,8 +8790,18 @@ const home = document.getElementById("view-home");
 home.classList.add("active");
 
 // If the URL hash points at a game, jump straight in
-if (location.hash === "#yahtzee") setTimeout(() => navigate("yahtzee","forward"), 50);
+if (resolveShareHash()){
+  /* loading view took over */
+} else if (location.hash === "#yahtzee") setTimeout(() => navigate("yahtzee","forward"), 50);
 else if (location.hash === "#phase10") setTimeout(() => navigate("phase10","forward"), 50);
+
+// Browser back/forward across share URLs
+window.addEventListener("hashchange", () => {
+  if (parseGameHash()) resolveShareHash();
+  else if (location.hash === "" || location.hash === "#") navigate("home", "back");
+  else if (location.hash === "#yahtzee") navigate("yahtzee", "forward");
+  else if (location.hash === "#phase10") navigate("phase10", "forward");
+});
 </script>
 </body>
 </html>
