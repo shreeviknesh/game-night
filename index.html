@@ -3888,6 +3888,66 @@ const Cloud = (() => {
     try { localStorage.setItem(cacheKey(code), JSON.stringify(merged)); } catch {}
   }
 
+  // ---- per-code save serialization ----
+  // Two saves with the same expectedRev racing each other is the cause of
+  // the "Game updated elsewhere" toast eating recent moves. We chain saves
+  // for a given code; each link in the chain reads the rev fresh from
+  // cache when it actually fires, so it always sends the most-recent rev.
+  // Coalescing: while a save is in flight, additional enqueueSave calls
+  // for the same code replace any pending save (last-write-wins per code).
+  const saveChains = new Map();   // code -> Promise that resolves when chain idle
+  const pendingSave = new Map();  // code -> {state} most recent enqueued
+
+  async function enqueueSave(code, state /*, _ignoredExpectedRev */){
+    if (!code) return null;
+    // Always update cache synchronously so reads see the latest state.
+    const c0 = readCache(code) || { kind: null };
+    writeCache(code, { ...c0, state, rev: c0.rev || 1 });
+
+    pendingSave.set(code, { state });
+    if (saveChains.has(code)) {
+      // a chain is already running — it will pick up pendingSave[code]
+      return saveChains.get(code);
+    }
+
+    const chain = (async () => {
+      while (pendingSave.has(code)) {
+        const { state: s } = pendingSave.get(code);
+        pendingSave.delete(code);
+        const cache = readCache(code) || { kind: null };
+        const expected = cache.rev || 1;
+        if (!isConfigured()) continue;
+        try {
+          const [row] = await rpc("save_game", { p_code: code, p_state: s, p_expected_rev: expected });
+          if (row?.conflict) {
+            // Server has a newer rev (likely a queued retry from another
+            // tab, or a previous link in this chain that we didn't await).
+            // We must NOT clobber the user's in-memory state. Just refresh
+            // the cache rev and re-push our state on the next iteration.
+            try {
+              const [g] = await rpc("get_game", { p_code: code });
+              if (g) writeCache(code, { kind: g.kind, state: cache.state || s, rev: g.rev, updated_at: g.updated_at });
+            } catch {}
+            // re-enqueue our state so it lands with the new rev
+            if (!pendingSave.has(code)) pendingSave.set(code, { state: s });
+            continue;
+          }
+          if (row) {
+            const c = readCache(code) || {};
+            writeCache(code, { ...c, state: s, rev: row.rev, updated_at: row.updated_at });
+          }
+        } catch {
+          // network failure — queue for retry
+          enqueueWrite(code, s);
+          break;
+        }
+      }
+      saveChains.delete(code);
+    })();
+    saveChains.set(code, chain);
+    return chain;
+  }
+
   // ---- public API ----
   return {
     init({ url, anonKey } = {}){
@@ -3954,27 +4014,12 @@ const Cloud = (() => {
     },
 
     async saveGame(code, state, expectedRev){
-      if (!code) return null;
-      const cache = readCache(code) || { kind: null };
-      // always update cache synchronously
-      writeCache(code, { ...cache, state, rev: cache.rev || expectedRev || 1 });
-      if (!isConfigured()) return { rev: cache.rev || 1, updated_at: new Date().toISOString(), conflict: false };
-      try {
-        const [row] = await rpc("save_game", { p_code: code, p_state: state, p_expected_rev: expectedRev || cache.rev || 1 });
-        if (row?.conflict) {
-          // surface server's view back to caller
-          try {
-            const [g] = await rpc("get_game", { p_code: code });
-            if (g) writeCache(code, { kind: g.kind, state: g.state, rev: g.rev, updated_at: g.updated_at });
-            return { rev: g?.rev, updated_at: g?.updated_at, conflict: true, serverState: g?.state, serverKind: g?.kind };
-          } catch { return { conflict: true }; }
-        }
-        writeCache(code, { ...cache, state, rev: row.rev, updated_at: row.updated_at });
-        return { rev: row.rev, updated_at: row.updated_at, conflict: false };
-      } catch {
-        enqueueWrite(code, state);
-        return null;
-      }
+      // Serialize saves per code. Otherwise rapid moves race: two saves
+      // fire with the same expectedRev, the second loses on the server,
+      // and the conflict handler eats the user's most recent move.
+      // We chain via a per-code promise queue and re-read the cache rev
+      // at the moment we actually fire the RPC.
+      return enqueueSave(code, state, expectedRev);
     },
 
     async listCompletedByCodes(kind, codes){
@@ -4118,15 +4163,9 @@ function saveState(){
   if (!code) return;
   const cache = Cloud.readCache(code) || {};
   Cloud.writeCache(code, { ...cache, kind: "yahtzee", state });
-  // fire-and-forget — Cloud handles offline queueing internally
-  Cloud.saveGame(code, state, cache.rev || 1).then(res => {
-    if (res?.conflict && res.serverState && currentView === "yahtzee") {
-      state = res.serverState;
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{}
-      if (typeof render === "function") render();
-      showToast("Game updated elsewhere — refreshed", "");
-    }
-  }).catch(() => {});
+  // Fire-and-forget; Cloud serializes saves per code so rapid moves never
+  // race themselves and the user's in-memory state is never overwritten.
+  Cloud.saveGame(code, state).catch(() => {});
 }
 function loadState(){
   // cache-first when we know which game this device is on
@@ -7243,14 +7282,9 @@ const P10 = (() => {
     if (!code) return;
     const cache = Cloud.readCache(code) || {};
     Cloud.writeCache(code, { ...cache, kind: "phase10", state });
-    Cloud.saveGame(code, state, cache.rev || 1).then(res => {
-      if (res?.conflict && res.serverState) {
-        state = normalizeLoaded(res.serverState);
-        try{ localStorage.setItem(STORAGE, JSON.stringify(state)); }catch{}
-        if (typeof render === "function") render();
-        showToast("Game updated elsewhere — refreshed", "");
-      }
-    }).catch(() => {});
+    // Fire-and-forget; Cloud serializes per code, so rapid commits don't
+    // race themselves into a conflict toast.
+    Cloud.saveGame(code, state).catch(() => {});
   }
   function clearState(){
     try{ localStorage.removeItem(STORAGE); }catch{}
@@ -8802,12 +8836,18 @@ async function runOneTimeMigration(){
   }
 
   let uploaded = 0;
+  let stampedCurrentYahtzee = null;
+  let stampedCurrentPhase10 = null;
   for (const t of tasks){
     try {
       const r = await Cloud.createGame(t.kind, t.state);
       if (r?.code){
         addToCodeHistory(r.code);
-        if (t.current) localStorage.setItem(`gn.current.${t.kind}`, r.code);
+        if (t.current){
+          localStorage.setItem(`gn.current.${t.kind}`, r.code);
+          if (t.kind === "yahtzee") stampedCurrentYahtzee = r.code;
+          else if (t.kind === "phase10") stampedCurrentPhase10 = r.code;
+        }
         uploaded++;
       }
     } catch { /* try again next boot */ }
@@ -8815,6 +8855,30 @@ async function runOneTimeMigration(){
 
   if (uploaded > 0){
     localStorage.setItem("gn.migrated.v1", "1");
+
+    // Re-bind in-memory state to the migrated cache entry. Otherwise the
+    // global `state` is still the legacy blob (loadState ran before this),
+    // and the next saveState would push that stale shape with rev=1 again.
+    if (stampedCurrentYahtzee){
+      const c = Cloud.readCache(stampedCurrentYahtzee);
+      if (c?.state?.players?.length){
+        state = c.state;
+        if (currentView === "yahtzee" && typeof render === "function") render();
+      }
+    }
+    if (stampedCurrentPhase10){
+      _phase10Booted = false;
+      if (currentView === "phase10") P10.boot();
+    }
+
+    // Stamp the URL so the user sees their share code without having to
+    // start a new game. Prefer Yahtzee if both migrated (matches the
+    // priority in the share button wiring).
+    const stampCode = stampedCurrentYahtzee || stampedCurrentPhase10;
+    if (stampCode && !parseGameHash()){
+      try { history.replaceState(null, "", `#g/${formatCode(stampCode)}`); } catch {}
+    }
+
     setTimeout(() => showToast("Your saves are now in the cloud", "success"), 600);
   }
 }
