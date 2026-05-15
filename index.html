@@ -4064,12 +4064,20 @@ let openColorPickerId = null;
 
 /* Async cloud refresh — runs after first paint. If the server has a newer
  * rev than our cache, swap state and re-render. Lazy so a flaky network
- * doesn't block boot. */
+ * doesn't block boot.
+ *
+ * Importantly: skip when a #g/CODE hash is in the URL — that path is
+ * owned by resolveShareHash(), and racing it can clobber the freshly
+ * loaded shared game with the device's previous one. */
 function refreshYahtzeeFromCloud(){
+  if (parseGameHash()) return;
   const code = currentYahtzeeCode();
   if (!code) return;
   const cached = Cloud.readCache(code);
   Cloud.loadGame(code).then(remote => {
+    // double-check: bail if a share hash resolution has begun while we waited
+    if (parseGameHash()) return;
+    if (currentYahtzeeCode() !== code) return;
     if (!remote) return;
     if (cached && (remote.rev || 0) <= (cached.rev || 0)) return;
     if (!remote.state?.players?.length) return;
@@ -8225,10 +8233,14 @@ const P10 = (() => {
   }
 
   function refreshFromCloud(){
+    // Don't race resolveShareHash() — see Yahtzee refreshYahtzeeFromCloud.
+    if (parseGameHash()) return;
     const code = currentCode();
     if (!code) return;
     const cached = Cloud.readCache(code);
     Cloud.loadGame(code).then(remote => {
+      if (parseGameHash()) return;
+      if (currentCode() !== code) return;
       if (!remote) return;
       if (cached && (remote.rev || 0) <= (cached.rev || 0)) return;
       const norm = normalizeLoaded(remote.state);
@@ -8629,7 +8641,25 @@ function resolveShareHash(){
   if (knownKind){
     localStorage.setItem(`gn.current.${knownKind}`, code);
     addToCodeHistory(code);
-    setTimeout(() => navigate(knownKind, "forward"), 50);
+    // Re-bind the in-memory state to the cached state for THIS code, so the
+    // about-to-render view doesn't show whatever game the device had open
+    // before. resolveShareHash is the only entry point that switches games.
+    const cached = Cloud.readCache(code);
+    if (cached?.state){
+      if (knownKind === "yahtzee"){
+        state = cached.state;
+        try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch{}
+      } else if (knownKind === "phase10"){
+        _phase10Booted = false; // force P10.boot() to re-read state on next nav
+      }
+    }
+    if (currentView === knownKind){
+      // Already on this view — navigate() would no-op. Re-boot in place.
+      if (knownKind === "yahtzee" && typeof render === "function") render();
+      else if (knownKind === "phase10") P10.boot();
+    } else {
+      setTimeout(() => navigate(knownKind, "forward"), 50);
+    }
     return true;
   }
   // unknown locally — show loading view, fetch
@@ -8656,7 +8686,13 @@ function resolveShareHash(){
     } else if (g.kind === "phase10"){
       _phase10Booted = false;
     }
-    navigate(g.kind, "forward");
+    if (currentView === g.kind){
+      // Already on this view — navigate() would no-op. Re-boot in place.
+      if (g.kind === "yahtzee" && typeof render === "function") render();
+      else if (g.kind === "phase10") P10.boot();
+    } else {
+      navigate(g.kind, "forward");
+    }
   }).catch(() => {
     hideLoadingView();
     const home = document.getElementById("view-home");
